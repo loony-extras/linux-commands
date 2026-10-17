@@ -1,6 +1,32 @@
-# Section 10 — Monitoring & Performance
+# Performance
 
-## 10.1 CPU Monitoring and Analysis
+CPU, memory, disk and network analysis and tuning.
+
+---
+
+## Files
+
+- [examples.sh](examples.sh)
+- [system-monitor.sh](system-monitor.sh)
+
+---
+
+## Usage
+
+```bash
+bash monitoring/performance/system-monitor.sh
+
+# Every 5 minutes via cron:
+echo "*/5 * * * * root bash /opt/linux-toolkit/monitoring/performance/system-monitor.sh" \
+  > /etc/cron.d/system-monitor
+```
+
+`system-monitor.sh` checks CPU, memory, disk, swap, services, failed units, OOM, FDs and
+network, and alerts by email on threshold breaches.
+
+---
+
+## CPU Monitoring and Analysis
 
 ```bash
 # Real-time CPU usage
@@ -35,9 +61,10 @@ perf top -p $(pgrep myapp)     # Live symbol-level profiling
 perf stat -p $(pgrep myapp) sleep 30
 ```
 
+
 ---
 
-## 10.2 Memory Monitoring
+## Memory Monitoring
 
 ```bash
 # Memory overview
@@ -85,9 +112,10 @@ apt install -y smem
 smem -r -k -s uss | head -20   # Sort by USS (unique/private memory)
 ```
 
+
 ---
 
-## 10.3 Disk Monitoring
+## Disk Monitoring
 
 ```bash
 # Disk usage
@@ -129,9 +157,10 @@ echo mq-deadline > /sys/block/sda/queue/scheduler   # Better for SSDs
 echo none > /sys/block/sda/queue/scheduler           # NVMe SSD (no scheduler)
 ```
 
+
 ---
 
-## 10.4 Network Monitoring
+## Network Monitoring
 
 ```bash
 # Interface statistics
@@ -160,220 +189,10 @@ tshark -r /tmp/capture.pcap -q -z io,stat,1  # I/O stats per second
 tshark -r /tmp/capture.pcap -T fields -e ip.src -e ip.dst | sort | uniq -c
 ```
 
----
-
-## 10.5 Prometheus + Grafana Setup
-
-### Prometheus (metrics collector)
-
-```yaml
-# monitoring/prometheus/prometheus.yml
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-  external_labels:
-    cluster: production
-    datacenter: dc1
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ['alertmanager:9093']
-
-rule_files:
-  - /etc/prometheus/rules/*.yml
-
-scrape_configs:
-  # Prometheus self-monitoring
-  - job_name: prometheus
-    static_configs:
-      - targets: ['localhost:9090']
-
-  # Node Exporter (system metrics)
-  - job_name: node
-    static_configs:
-      - targets:
-          - web-01:9100
-          - web-02:9100
-          - db-01:9100
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-
-  # Nginx metrics (nginx-prometheus-exporter)
-  - job_name: nginx
-    static_configs:
-      - targets: ['web-01:9113', 'web-02:9113']
-
-  # PostgreSQL metrics
-  - job_name: postgres
-    static_configs:
-      - targets: ['db-01:9187']
-
-  # Docker containers via cAdvisor
-  - job_name: cadvisor
-    static_configs:
-      - targets: ['localhost:8080']
-
-  # Custom application metrics
-  - job_name: myapp
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['app-01:8080', 'app-02:8080']
-    basic_auth:
-      username: metrics
-      password: secretpass
-```
-
-### Alert Rules
-
-```yaml
-# monitoring/prometheus/rules/alerts.yml
-groups:
-  - name: node
-    rules:
-      - alert: NodeDown
-        expr: up == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Node {{ $labels.instance }} is down"
-
-      - alert: HighCPU
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High CPU on {{ $labels.instance }}: {{ $value }}%"
-
-      - alert: HighMemory
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High memory on {{ $labels.instance }}: {{ $value }}%"
-
-      - alert: DiskSpaceLow
-        expr: (node_filesystem_free_bytes / node_filesystem_size_bytes) * 100 < 10
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Disk space critical on {{ $labels.instance }}: {{ $value }}% free"
-
-      - alert: HighDiskIO
-        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Disk {{ $labels.device }} near saturation on {{ $labels.instance }}"
-
-      - alert: NetworkErrors
-        expr: rate(node_network_receive_errs_total[5m]) > 10
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Network errors on {{ $labels.instance }}"
-```
-
-### Node Exporter Installation
-
-```bash
-# monitoring/node-exporter.sh
-#!/bin/bash
-set -euo pipefail
-
-NODE_EXPORTER_VERSION="1.7.0"
-ARCH="linux-amd64"
-
-wget -q "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.${ARCH}.tar.gz"
-tar -xzf "node_exporter-${NODE_EXPORTER_VERSION}.${ARCH}.tar.gz"
-cp "node_exporter-${NODE_EXPORTER_VERSION}.${ARCH}/node_exporter" /usr/local/bin/
-chmod +x /usr/local/bin/node_exporter
-
-# Create system user
-useradd -r -s /usr/sbin/nologin node_exporter
-
-# systemd unit
-cat > /etc/systemd/system/node-exporter.service << 'EOF'
-[Unit]
-Description=Prometheus Node Exporter
-After=network.target
-
-[Service]
-User=node_exporter
-Group=node_exporter
-Type=simple
-ExecStart=/usr/local/bin/node_exporter \
-  --collector.systemd \
-  --collector.processes \
-  --collector.interrupts \
-  --collector.perf \
-  --web.listen-address=:9100
-
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable --now node-exporter
-echo "Node Exporter running on :9100"
-```
 
 ---
 
-## 10.6 Log Analysis
-
-```bash
-# journalctl log analysis (see also Section 04)
-journalctl --since "1 hour ago" | grep -c ERROR
-journalctl -u nginx --since today -o json | jq '.MESSAGE' | grep -c "502"
-
-# nginx access log analysis
-LOG=/var/log/nginx/access.log
-
-# Top 20 IPs by request count
-awk '{print $1}' $LOG | sort | uniq -c | sort -rn | head -20
-
-# Top URLs
-awk '{print $7}' $LOG | sort | uniq -c | sort -rn | head -20
-
-# HTTP status code distribution
-awk '{print $9}' $LOG | sort | uniq -c | sort -rn
-
-# Average response size
-awk '{sum += $10; count++} END {print sum/count " bytes avg"}' $LOG
-
-# Requests per minute
-awk '{print $4}' $LOG | cut -d: -f1-3 | sort | uniq -c | tail -60
-
-# Bandwidth by status code
-awk '{status[$9] += $10} END {for (s in status) printf "%s: %.1f MB\n", s, status[s]/1048576}' $LOG
-
-# GoAccess — real-time web log analyzer
-apt install -y goaccess
-goaccess /var/log/nginx/access.log -c          # Interactive TUI
-goaccess /var/log/nginx/access.log \
-  --log-format=COMBINED \
-  -o /var/www/html/report.html \
-  --real-time-html                             # Live HTML report
-
-# logwatch — daily log summary email
-apt install -y logwatch
-logwatch --output mail --mailto admin@company.com --detail high --range today
-```
-
----
-
-## 10.7 Performance Tuning
+## Performance Tuning
 
 ### CPU Tuning
 
