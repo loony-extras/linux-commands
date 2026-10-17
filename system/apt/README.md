@@ -1,6 +1,83 @@
-# Section 08 — Package Management & Build Systems
+# apt & dpkg
 
-## 8.1 apt Deep Dive
+Debian package management.
+
+---
+
+## Package Management (apt / dpkg)
+
+```bash
+# Update package index
+apt update
+
+# Upgrade all packages
+apt upgrade -y
+
+# Full upgrade (handles dependency changes)
+apt full-upgrade -y
+
+# Install a package
+apt install -y nginx
+
+# Remove package (keep config)
+apt remove nginx
+
+# Remove package AND config
+apt purge nginx
+
+# Remove unused deps
+apt autoremove
+
+# Search for a package
+apt search "web server"
+
+# Show package details
+apt show nginx
+
+# List installed packages
+dpkg -l
+
+# Find which package owns a file
+dpkg -S /usr/bin/vim
+
+# List files installed by a package
+dpkg -L vim
+
+# Install a local .deb file
+dpkg -i package.deb
+
+# Hold a package at current version (prevent upgrades)
+apt-mark hold nginx
+
+# Unhold
+apt-mark unhold nginx
+
+# List held packages
+apt-mark showhold
+```
+
+### Unattended Upgrades (security patches only)
+
+```bash
+apt install -y unattended-upgrades
+
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+
+# Enable the timer
+systemctl enable --now unattended-upgrades
+```
+
+
+---
+
+## apt Deep Dive
 
 ### The apt stack
 ```
@@ -94,9 +171,10 @@ apt-cache stats                         # Repository statistics
 apt-cache dump | grep "Package:" | wc -l  # Count available packages
 ```
 
+
 ---
 
-## 8.2 dpkg Deep Dive
+## dpkg Deep Dive
 
 ```bash
 # Install local .deb file
@@ -155,89 +233,10 @@ EOF
 dpkg-deb --build mypackage
 ```
 
----
-
-## 8.3 Building from Source
-
-```bash
-# General pattern for autotools (./configure, make)
-# 1. Get source
-wget https://example.com/myapp-1.0.tar.gz
-tar -xzf myapp-1.0.tar.gz
-cd myapp-1.0
-
-# 2. Install build dependencies
-apt install -y build-essential libssl-dev libpcre3-dev zlib1g-dev
-
-# 3. Configure (check for required deps, set install paths)
-./configure \
-  --prefix=/usr/local \
-  --bindir=/usr/local/bin \
-  --sysconfdir=/etc/myapp \
-  --with-ssl \
-  --without-debug
-
-# Read ./configure --help for all options
-
-# 4. Build (use all CPUs)
-make -j$(nproc)
-
-# 5. Run tests (if available)
-make check
-make test
-
-# 6. Install
-sudo make install
-
-# 7. Update dynamic linker cache
-sudo ldconfig
-
-# Uninstall (if make uninstall is supported)
-sudo make uninstall
-
-# CMake projects
-mkdir build && cd build
-cmake .. \
-  -DCMAKE_INSTALL_PREFIX=/usr/local \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DENABLE_SSL=ON
-make -j$(nproc)
-sudo make install
-
-# Meson projects
-meson setup build --prefix=/usr/local
-cd build
-ninja -j$(nproc)
-sudo ninja install
-
-# Compiling nginx from source (real example)
-NGINX_VERSION="1.25.3"
-apt install -y build-essential libpcre3-dev zlib1g-dev libssl-dev libgd-dev
-
-wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
-tar -xzf nginx-${NGINX_VERSION}.tar.gz
-cd nginx-${NGINX_VERSION}
-
-./configure \
-  --prefix=/etc/nginx \
-  --sbin-path=/usr/sbin/nginx \
-  --conf-path=/etc/nginx/nginx.conf \
-  --error-log-path=/var/log/nginx/error.log \
-  --http-log-path=/var/log/nginx/access.log \
-  --pid-path=/var/run/nginx.pid \
-  --with-http_ssl_module \
-  --with-http_v2_module \
-  --with-http_gzip_static_module \
-  --with-threads \
-  --with-file-aio
-
-make -j$(nproc)
-sudo make install
-```
 
 ---
 
-## 8.4 Dependency Resolution
+## Dependency Resolution
 
 ```bash
 # See why a package is installed (reverse deps)
@@ -265,35 +264,3 @@ deborphan --guess-all        # All orphaned packages (not just libs)
 apt purge $(deborphan)       # Remove them
 ```
 
----
-
-## 8.5 Managing Multiple Python / Node Versions
-
-```bash
-# Python — use pyenv for version management
-curl https://pyenv.run | bash
-
-# Add to ~/.bashrc
-export PYENV_ROOT="$HOME/.pyenv"
-command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-
-pyenv install 3.12.0
-pyenv install 3.11.5
-pyenv global 3.12.0          # System default
-pyenv local 3.11.5           # Per-directory (creates .python-version)
-pyenv shell 3.10.0           # For current session only
-
-# Node.js — use nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-
-nvm install 20               # Install Node 20 LTS
-nvm install 18
-nvm use 20                   # Switch to Node 20
-nvm alias default 20         # Set default
-
-# Go — official installer or goenv
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
-tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
-echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
-```

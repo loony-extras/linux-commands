@@ -1,45 +1,24 @@
-# Section 04 — Process Management & systemd
+# systemd
 
-## 4.1 Process Lifecycle
-
-```
-fork() → exec() → run → exit()
-  │         │               │
-  │         └─ loads new    └─ sends SIGCHLD to parent
-  └─ copies parent process      parent must wait() to reap
-```
-
-### Process States
-
-| State | Symbol | Meaning |
-|-------|--------|---------|
-| Running | R | Actively executing or runnable |
-| Sleeping | S | Interruptible sleep (waiting for event) |
-| Disk Sleep | D | Uninterruptible sleep (waiting for I/O) — cannot be killed |
-| Stopped | T | Stopped by signal (SIGSTOP or debugger) |
-| Zombie | Z | Exited, parent hasn't called wait() yet |
-| Idle | I | Idle kernel thread |
-
-```bash
-# View process tree
-pstree -p              # With PIDs
-pstree -u              # Show owners
-
-# Zombie processes — find and investigate
-ps aux | awk '$8 == "Z"'
-# Zombies are harmless unless numerous — fix the parent process
-
-# Process limits
-ulimit -a              # Show all limits for current shell
-ulimit -n 65536        # Increase open files for this session
-ulimit -u 4096         # Max user processes
-# For persistent limits: /etc/security/limits.conf
-# or /etc/security/limits.d/99-custom.conf
-```
+Units, timers, dependencies and cgroups.
 
 ---
 
-## 4.2 systemd Architecture
+## Files
+
+- [myapp.service](myapp.service)
+
+---
+
+## Usage
+
+`myapp.service` is a hardened production app unit (`/etc/systemd/system/`): non-root user,
+PrivateTmp, ProtectSystem, MemoryMax and resource limits. For a timer example see
+[system/backup](../backup/).
+
+---
+
+## systemd Architecture
 
 systemd is PID 1 on all modern Debian/Ubuntu systems. It manages:
 - Service lifecycle (start/stop/restart)
@@ -104,9 +83,10 @@ systemctl halt
 systemctl suspend
 ```
 
+
 ---
 
-## 4.3 Custom systemd Unit Files
+## Custom systemd Unit Files
 
 Unit files live in:
 - `/lib/systemd/system/` — distro-provided (don't edit)
@@ -223,9 +203,10 @@ systemctl daemon-reload
 systemctl restart nginx
 ```
 
+
 ---
 
-## 4.4 Systemd Timers (Cron Replacement)
+## Systemd Timers (Cron Replacement)
 
 ```ini
 # /etc/systemd/system/backup.service
@@ -261,72 +242,10 @@ systemctl list-timers                  # Show all timers with next run time
 systemctl status backup.timer
 ```
 
----
-
-## 4.5 Journald Logging
-
-journald collects stdout/stderr of all services, kernel messages, and syslog.
-
-```bash
-# View all logs
-journalctl
-
-# Follow live (like tail -f)
-journalctl -f
-
-# Specific service
-journalctl -u nginx
-journalctl -u nginx -f
-
-# Time filters
-journalctl --since "2024-01-15 08:00"
-journalctl --since "1 hour ago"
-journalctl --since today
-journalctl --until "2024-01-15 10:00"
-journalctl --since "2024-01-15 08:00" --until "2024-01-15 09:00"
-
-# Priority filters
-journalctl -p err                      # Errors and above
-journalctl -p warning..err            # Warning to error
-# Priorities: emerg(0), alert(1), crit(2), err(3), warning(4), notice(5), info(6), debug(7)
-
-# Boot logs
-journalctl -b                          # Current boot
-journalctl -b -1                       # Previous boot
-journalctl --list-boots                # All recorded boots
-
-# Kernel messages
-journalctl -k                          # Kernel messages only
-journalctl -k -b                       # Kernel messages from current boot
-
-# Output format
-journalctl -u nginx -o json           # JSON format
-journalctl -u nginx -o json-pretty    # Pretty JSON
-journalctl -u nginx --no-pager        # No pager
-
-# Disk usage
-journalctl --disk-usage
-
-# Configure journald
-cat > /etc/systemd/journald.conf << 'EOF'
-[Journal]
-Storage=persistent
-Compress=yes
-SystemMaxUse=500M
-SystemKeepFree=1G
-MaxRetentionSec=30day
-MaxFileSec=1week
-EOF
-
-systemctl restart systemd-journald
-
-# Export logs
-journalctl -u myapp --since "1 week ago" -o export > myapp-logs.export
-```
 
 ---
 
-## 4.6 Service Dependency Management
+## Service Dependency Management
 
 ```
 Wants=         soft dependency (continue even if dep fails)
@@ -349,9 +268,10 @@ systemctl list-dependencies multi-user.target   # Target dependencies
 systemctl list-units --state=enabled --type=service
 ```
 
+
 ---
 
-## 4.7 Resource Control with cgroups
+## Resource Control with cgroups
 
 systemd uses cgroups v2 for resource accounting and limiting:
 

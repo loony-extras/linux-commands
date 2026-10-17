@@ -1,6 +1,42 @@
-# Section 12 — Kernel & Low-Level Systems
+# Kernel
 
-## 12.1 Linux Kernel Architecture
+Kernel architecture, modules, /proc, /sys, custom builds.
+
+---
+
+## Files
+
+- [examples.sh](examples.sh)
+
+---
+
+## Kernel Version Management
+
+```bash
+# Check current kernel
+uname -r
+
+# List installed kernels
+dpkg -l 'linux-image-*' | grep ^ii
+
+# Install a specific kernel version
+apt install linux-image-6.5.0-35-generic
+
+# Remove an old kernel
+apt purge linux-image-5.15.0-100-generic
+
+# Pin the kernel (prevent auto-upgrade)
+apt-mark hold linux-image-$(uname -r)
+
+# Switch default kernel in GRUB
+# Edit /etc/default/grub, set GRUB_DEFAULT to the entry number or title
+# Then: sudo update-grub
+```
+
+
+---
+
+## Linux Kernel Architecture
 
 ```
 User Space
@@ -44,9 +80,10 @@ Hardware: CPU, RAM, Disk, NIC, GPU, ...
 | namespaces | Isolation (pid, net, mnt, uts, ipc, user — Linux containers) |
 | eBPF | Safe kernel programmability without modules |
 
+
 ---
 
-## 12.2 Kernel Modules
+## Kernel Modules
 
 Modules are dynamically loadable pieces of kernel code (device drivers, filesystems, etc).
 
@@ -95,78 +132,10 @@ modprobe -v tcp_bbr             # Verbose
 dmesg | grep -i "module\|taint" | tail -20
 ```
 
----
-
-## 12.3 sysctl Tuning (Reference)
-
-```bash
-# View all sysctl parameters
-sysctl -a 2>/dev/null | wc -l   # Count of all parameters
-
-# Categories of interest
-sysctl -a | grep ^kernel        # Kernel params
-sysctl -a | grep ^net           # Network params
-sysctl -a | grep ^vm            # VM/memory params
-sysctl -a | grep ^fs            # Filesystem params
-
-# Commonly tuned — production web server
-cat > /etc/sysctl.d/99-production.conf << 'EOF'
-# =====================================
-# KERNEL
-# =====================================
-kernel.panic = 10                      # Reboot 10s after panic
-kernel.panic_on_oops = 1              # Panic on kernel oops
-kernel.randomize_va_space = 2         # Full ASLR
-kernel.dmesg_restrict = 1            # Only root can read dmesg
-kernel.kptr_restrict = 2             # Hide kernel pointers
-
-# =====================================
-# VM / MEMORY
-# =====================================
-vm.swappiness = 10                    # Prefer RAM over swap
-vm.dirty_ratio = 15                  # Start sync writes at 15% dirty
-vm.dirty_background_ratio = 5       # Start bg writes at 5% dirty
-vm.vfs_cache_pressure = 50           # Keep inode/dentry cache longer
-vm.overcommit_memory = 1             # Allow overcommit (needed for Java/fork)
-vm.overcommit_ratio = 80
-
-# =====================================
-# NETWORK
-# =====================================
-net.core.somaxconn = 65535
-net.core.netdev_max_backlog = 65535
-net.core.rmem_max = 134217728
-net.core.wmem_max = 134217728
-net.ipv4.tcp_rmem = 4096 87380 134217728
-net.ipv4.tcp_wmem = 4096 65536 134217728
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_fin_timeout = 15
-net.ipv4.tcp_max_orphans = 65535
-net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_max_syn_backlog = 2048
-net.ipv4.tcp_keepalive_time = 60
-net.ipv4.tcp_keepalive_intvl = 10
-net.ipv4.tcp_keepalive_probes = 6
-net.core.default_qdisc = fq
-net.ipv4.tcp_congestion_control = bbr
-
-# =====================================
-# FILESYSTEM
-# =====================================
-fs.file-max = 2097152
-fs.inotify.max_user_watches = 524288
-fs.protected_symlinks = 1
-fs.protected_hardlinks = 1
-fs.suid_dumpable = 0
-EOF
-
-sysctl -p /etc/sysctl.d/99-production.conf
-```
 
 ---
 
-## 12.4 /proc Filesystem
+## /proc Filesystem
 
 ```bash
 # Process information
@@ -200,9 +169,10 @@ cat /proc/buddyinfo                      # Memory fragmentation
 cat /proc/slabinfo                       # Kernel slab allocator stats
 ```
 
+
 ---
 
-## 12.5 /sys Filesystem
+## /sys Filesystem
 
 ```bash
 # Block devices
@@ -246,9 +216,10 @@ echo never > /sys/kernel/mm/transparent_hugepage/enabled
 echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
+
 ---
 
-## 12.6 Compiling a Custom Kernel
+## Compiling a Custom Kernel
 
 > This is advanced. Only do this if you need specific patches or config not available in distribution kernels.
 
