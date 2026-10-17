@@ -105,7 +105,7 @@
 
 - name: Deploy Prometheus configuration
   copy:
-    src: "{{ playbook_dir }}/../monitoring/prometheus/prometheus.yml"
+    src: "{{ playbook_dir }}/../../../monitoring/prometheus/prometheus.yml"
     dest: /etc/prometheus/prometheus.yml
     owner: root
     group: root
@@ -116,7 +116,7 @@
 
 - name: Deploy Prometheus alert rules
   copy:
-    src: "{{ playbook_dir }}/../monitoring/prometheus/alerts.yml"
+    src: "{{ playbook_dir }}/../../../monitoring/prometheus/alerts.yml"
     dest: /etc/prometheus/rules/alerts.yml
     owner: root
     group: root

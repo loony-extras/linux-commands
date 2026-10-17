@@ -1,4 +1,4 @@
-# docker/docker-compose.yml — Production Stack (loony-linux)
+# devops/docker/docker-compose.yml — Production Stack (loony-linux)
 # Includes: app, postgres, redis, nginx reverse proxy
 # Usage:
 #   cp .env.example .env && vi .env
@@ -13,7 +13,7 @@ services:
   app:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.base
+      dockerfile: devops/docker/Dockerfile.base
       target: production
     image: ${APP_IMAGE:-myapp}:${APP_VERSION:-latest}
     restart: unless-stopped
@@ -162,7 +162,7 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
-      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
