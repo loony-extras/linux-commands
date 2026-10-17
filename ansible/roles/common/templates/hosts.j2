@@ -1,0 +1,17 @@
+# /etc/hosts — managed by Ansible (loony-linux)
+# Manual edits will be overwritten on next Ansible run
+
+127.0.0.1   localhost
+127.0.1.1   {{ inventory_hostname }} {{ inventory_hostname }}.{{ domain | default('internal') }}
+::1         localhost ip6-localhost ip6-loopback
+ff02::1     ip6-allnodes
+ff02::2     ip6-allrouters
+
+{% if groups['all'] is defined %}
+# Inventory hosts
+{% for host in groups['all'] %}
+{% if hostvars[host].ansible_host is defined and host != inventory_hostname %}
+{{ hostvars[host].ansible_host }}   {{ host }}
+{% endif %}
+{% endfor %}
+{% endif %}

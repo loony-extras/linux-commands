@@ -1,0 +1,137 @@
+---
+# roles/common/tasks/main.yml
+
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+  tags: packages
+
+- name: Install baseline packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - tmux
+      - ufw
+      - fail2ban
+      - auditd
+      - apparmor
+      - apparmor-utils
+      - unattended-upgrades
+      - sysstat
+      - chrony
+      - rsync
+      - lsof
+      - jq
+      - ca-certificates
+      - gnupg
+    state: present
+  tags: packages
+
+- name: Set timezone
+  timezone:
+    name: "{{ system_timezone | default('UTC') }}"
+  tags: timezone
+
+- name: Enable NTP via chrony
+  service:
+    name: chrony
+    state: started
+    enabled: true
+  tags: ntp
+
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+  tags: hostname
+
+- name: Configure /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    regexp: "^127.0.1.1"
+    line: "127.0.1.1 {{ inventory_hostname }}"
+    state: present
+  tags: hostname
+
+- name: Configure sysctl security parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-ansible.conf
+    reload: true
+  loop: "{{ sysctl_params }}"
+  tags: sysctl
+
+- name: Configure unattended upgrades
+  copy:
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    owner: root
+    group: root
+    mode: '0644'
+  tags: security
+
+- name: Enable unattended upgrades
+  service:
+    name: unattended-upgrades
+    state: started
+    enabled: true
+  tags: security
+
+- name: Create admin user
+  user:
+    name: "{{ admin_user | default('admin') }}"
+    groups:
+      - sudo
+      - adm
+    shell: /bin/bash
+    create_home: true
+    state: present
+  tags: users
+
+- name: Set authorized keys for admin user
+  authorized_key:
+    user: "{{ admin_user | default('admin') }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ admin_ssh_keys | default([]) }}"
+  when: admin_ssh_keys is defined
+  tags: users
+
+- name: Disable unnecessary services
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop:
+    - avahi-daemon
+    - cups
+    - bluetooth
+  ignore_errors: true
+  tags: services
+
+- name: Configure UFW defaults
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+  tags: firewall
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: "{{ ssh_port | default('22') }}"
+    proto: tcp
+  tags: firewall

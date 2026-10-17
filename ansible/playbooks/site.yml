@@ -1,0 +1,34 @@
+---
+# site.yml — Master playbook
+# Run: ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+
+- name: Common baseline — all servers
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: common
+      tags: [common, always]
+    - role: security
+      tags: [security]
+
+- name: Web servers
+  hosts: web
+  become: true
+  roles:
+    - role: nginx
+      tags: [nginx, web]
+
+- name: Database servers
+  hosts: db
+  become: true
+  roles:
+    - role: postgresql
+      tags: [postgres, db]
+
+- name: Monitoring stack
+  hosts: monitoring
+  become: true
+  roles:
+    - role: monitoring
+      tags: [monitoring, prometheus, grafana]

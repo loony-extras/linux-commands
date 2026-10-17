@@ -1,0 +1,37 @@
+# /etc/ssh/sshd_config.d/99-hardening.conf
+# Managed by Ansible (loony-linux security role)
+
+Port {{ ssh_port | default(22) }}
+AddressFamily inet
+PermitRootLogin no
+PasswordAuthentication {{ ssh_password_auth | default('no') }}
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+
+MaxAuthTries 3
+LoginGraceTime 60
+MaxSessions 10
+MaxStartups 10:30:60
+
+X11Forwarding no
+AllowTcpForwarding no
+AllowAgentForwarding no
+PermitTunnel no
+PrintMotd no
+PrintLastLog yes
+ClientAliveInterval 300
+ClientAliveCountMax 2
+UseDNS no
+
+{% if ssh_allow_users is defined %}
+AllowUsers {{ ssh_allow_users | join(' ') }}
+{% endif %}
+{% if ssh_allow_groups is defined %}
+AllowGroups {{ ssh_allow_groups | join(' ') }}
+{% endif %}
+
+Banner /etc/ssh/banner.txt

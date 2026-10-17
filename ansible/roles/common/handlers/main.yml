@@ -1,0 +1,55 @@
+---
+# roles/common/handlers/main.yml
+# Handlers are idempotent deferred actions — only run when notified
+
+- name: restart sshd
+  service:
+    name: sshd
+    state: restarted
+
+- name: reload sshd
+  service:
+    name: sshd
+    state: reloaded
+
+- name: restart fail2ban
+  service:
+    name: fail2ban
+    state: restarted
+
+- name: reload fail2ban
+  service:
+    name: fail2ban
+    state: reloaded
+
+- name: restart auditd
+  service:
+    name: auditd
+    state: restarted
+
+- name: reload sysctl
+  command: sysctl -p /etc/sysctl.d/99-ansible.conf
+
+- name: enable unattended-upgrades
+  service:
+    name: unattended-upgrades
+    state: started
+    enabled: true
+
+- name: reload apparmor
+  service:
+    name: apparmor
+    state: reloaded
+
+- name: restart nftables
+  service:
+    name: nftables
+    state: restarted
+
+- name: reload ufw
+  command: ufw reload
+
+- name: restart chrony
+  service:
+    name: chrony
+    state: restarted

@@ -1,0 +1,187 @@
+---
+# roles/security/tasks/main.yml
+
+# ============================================================
+# SSH Hardening
+# ============================================================
+- name: Configure SSH hardening
+  template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: '0600'
+    validate: /usr/sbin/sshd -t -f %s
+  notify: reload sshd
+  tags: ssh
+
+- name: Regenerate SSH host keys if they are default/image-baked
+  block:
+    - name: Check key age
+      stat:
+        path: /etc/ssh/ssh_host_ed25519_key
+      register: ssh_key_stat
+
+    - name: Regenerate keys if older than 365 days or missing
+      shell: |
+        rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub
+        ssh-keygen -A
+      when: >
+        not ssh_key_stat.stat.exists or
+        (ansible_date_time.epoch | int - ssh_key_stat.stat.mtime | int) > 31536000
+      notify: restart sshd
+  tags: ssh
+
+# ============================================================
+# Firewall
+# ============================================================
+- name: Configure nftables ruleset
+  template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: '0640'
+    validate: /usr/sbin/nft -c -f %s
+  notify: restart nftables
+  tags: firewall
+
+- name: Enable nftables
+  service:
+    name: nftables
+    state: started
+    enabled: true
+  tags: firewall
+
+# ============================================================
+# Fail2ban
+# ============================================================
+- name: Configure fail2ban jail
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags: fail2ban
+
+- name: Enable fail2ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: true
+  tags: fail2ban
+
+# ============================================================
+# auditd
+# ============================================================
+- name: Deploy auditd rules
+  copy:
+    src: audit.rules
+    dest: /etc/audit/rules.d/99-custom.rules
+    owner: root
+    group: root
+    mode: '0640'
+  notify: restart auditd
+  tags: audit
+
+- name: Enable auditd
+  service:
+    name: auditd
+    state: started
+    enabled: true
+  tags: audit
+
+# ============================================================
+# Kernel hardening (sysctl)
+# ============================================================
+- name: Apply security sysctl parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-security.conf
+    reload: true
+  loop:
+    - { name: "kernel.dmesg_restrict",           value: "1" }
+    - { name: "kernel.kptr_restrict",             value: "2" }
+    - { name: "kernel.yama.ptrace_scope",         value: "2" }
+    - { name: "kernel.sysrq",                     value: "0" }
+    - { name: "kernel.randomize_va_space",        value: "2" }
+    - { name: "fs.suid_dumpable",                 value: "0" }
+    - { name: "fs.protected_symlinks",            value: "1" }
+    - { name: "fs.protected_hardlinks",           value: "1" }
+    - { name: "net.ipv4.ip_forward",              value: "0" }
+    - { name: "net.ipv4.tcp_syncookies",          value: "1" }
+    - { name: "net.ipv4.conf.all.rp_filter",      value: "1" }
+    - { name: "net.ipv4.conf.all.accept_redirects", value: "0" }
+    - { name: "net.ipv4.conf.all.log_martians",   value: "1" }
+    - { name: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
+  tags: sysctl
+
+# ============================================================
+# Disable core dumps
+# ============================================================
+- name: Disable core dumps via limits.d
+  copy:
+    dest: /etc/security/limits.d/99-disable-coredump.conf
+    content: |
+      * soft core 0
+      * hard core 0
+    owner: root
+    group: root
+    mode: '0644'
+  tags: hardening
+
+# ============================================================
+# Restrict /tmp
+# ============================================================
+- name: Mount /tmp as tmpfs with security options
+  mount:
+    name: /tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: "rw,nosuid,nodev,noexec,size={{ tmp_size | default('1G') }}"
+    state: mounted
+  tags: filesystem
+
+# ============================================================
+# Password policy
+# ============================================================
+- name: Set password aging defaults in login.defs
+  lineinfile:
+    path: /etc/login.defs
+    regexp: "^{{ item.key }}"
+    line: "{{ item.key }}    {{ item.value }}"
+    state: present
+  loop:
+    - { key: "PASS_MAX_DAYS", value: "90" }
+    - { key: "PASS_MIN_DAYS", value: "7" }
+    - { key: "PASS_WARN_AGE", value: "14" }
+    - { key: "ENCRYPT_METHOD", value: "SHA512" }
+  tags: password_policy
+
+# ============================================================
+# AIDE file integrity
+# ============================================================
+- name: Initialize AIDE database (first run)
+  command: aideinit --yes
+  args:
+    creates: /var/lib/aide/aide.db.new
+  register: aide_init
+  tags: aide
+
+- name: Move AIDE database to active location
+  command: mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+  when: aide_init.changed
+  tags: aide
+
+- name: Schedule daily AIDE check
+  cron:
+    name: aide-daily-check
+    user: root
+    hour: "3"
+    minute: "15"
+    job: "/usr/bin/aide --check 2>&1 | /usr/bin/mail -s 'AIDE Report: {{ inventory_hostname }}' root"
+  tags: aide

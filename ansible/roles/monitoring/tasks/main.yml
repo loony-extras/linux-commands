@@ -1,0 +1,126 @@
+---
+# roles/monitoring/tasks/main.yml
+
+# ============================================================
+# Node Exporter
+# ============================================================
+- name: Create node_exporter system user
+  user:
+    name: node_exporter
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/node_exporter
+    create_home: true
+    state: present
+  tags: node_exporter
+
+- name: Create textfile collector directory
+  file:
+    path: /var/lib/node_exporter/textfile_collector
+    state: directory
+    owner: node_exporter
+    group: node_exporter
+    mode: '0755'
+  tags: node_exporter
+
+- name: Check if node_exporter is already installed
+  stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_binary
+  tags: node_exporter
+
+- name: Download and install node_exporter
+  when: not node_exporter_binary.stat.exists
+  block:
+    - name: Download node_exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version | default('1.7.0') }}/node_exporter-{{ node_exporter_version | default('1.7.0') }}.linux-amd64.tar.gz"
+        dest: /tmp/node_exporter.tar.gz
+        mode: '0644'
+
+    - name: Extract node_exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /tmp/
+        remote_src: true
+
+    - name: Install node_exporter binary
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version | default('1.7.0') }}.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        owner: root
+        group: root
+        mode: '0755'
+        remote_src: true
+  tags: node_exporter
+
+- name: Deploy node_exporter systemd service
+  template:
+    src: node-exporter.service.j2
+    dest: /etc/systemd/system/node-exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart node-exporter
+  tags: node_exporter
+
+- name: Enable and start node_exporter
+  service:
+    name: node-exporter
+    state: started
+    enabled: true
+  tags: node_exporter
+
+# ============================================================
+# UFW rule for node_exporter
+# ============================================================
+- name: Allow node_exporter from monitoring server
+  ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    src: "{{ monitoring_server_ip | default('127.0.0.1') }}"
+    comment: Prometheus node_exporter
+  when: monitoring_server_ip is defined
+  tags: node_exporter, firewall
+
+# ============================================================
+# Prometheus (on monitoring server only)
+# ============================================================
+- name: Create Prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/prometheus
+    - /etc/prometheus/rules
+    - /var/lib/prometheus
+  when: inventory_hostname in groups.get('monitoring', [])
+  tags: prometheus
+
+- name: Deploy Prometheus configuration
+  copy:
+    src: "{{ playbook_dir }}/../monitoring/prometheus/prometheus.yml"
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: '0644'
+  when: inventory_hostname in groups.get('monitoring', [])
+  notify: restart prometheus
+  tags: prometheus
+
+- name: Deploy Prometheus alert rules
+  copy:
+    src: "{{ playbook_dir }}/../monitoring/prometheus/alerts.yml"
+    dest: /etc/prometheus/rules/alerts.yml
+    owner: root
+    group: root
+    mode: '0644'
+  when: inventory_hostname in groups.get('monitoring', [])
+  notify: reload prometheus
+  tags: prometheus

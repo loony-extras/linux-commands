@@ -1,0 +1,87 @@
+# docker/Dockerfile.base
+# Multi-stage production Dockerfile for a Go application.
+# Adapt the build stage for your language/framework.
+
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
+FROM golang:1.22-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /app
+
+# Cache dependencies before copying source (Docker layer caching)
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy source
+COPY . .
+
+# Build optimized binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build \
+    -trimpath \
+    -ldflags="-w -s -X main.version=$(git describe --tags --always)" \
+    -o /app/server \
+    ./cmd/server
+
+# =============================================================================
+# Stage 2: Tests (optional — run in CI)
+# =============================================================================
+FROM builder AS tester
+RUN go test ./... -v -race -timeout 120s
+
+# =============================================================================
+# Stage 3: Final production image
+# =============================================================================
+# Use distroless for minimal attack surface (no shell, no package manager)
+FROM gcr.io/distroless/static-debian12 AS production
+
+# Copy timezone data and CA certs from builder
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Copy the binary
+COPY --from=builder --chown=nonroot:nonroot /app/server /server
+
+# Run as non-root (distroless provides nonroot/65532 user)
+USER nonroot:nonroot
+
+# Metadata
+LABEL org.opencontainers.image.title="myapp" \
+      org.opencontainers.image.description="My Application" \
+      org.opencontainers.image.vendor="MyCompany"
+
+EXPOSE 8080
+
+ENTRYPOINT ["/server"]
+
+# =============================================================================
+# Alternative: Ubuntu-based image (when you need a shell or apt packages)
+# =============================================================================
+FROM ubuntu:22.04 AS ubuntu-production
+
+# Avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal runtime deps only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN groupadd -r app && useradd -r -g app -d /app -s /sbin/nologin app
+
+WORKDIR /app
+
+COPY --from=builder --chown=app:app /app/server /app/server
+
+USER app
+
+EXPOSE 8080
+ENTRYPOINT ["/app/server"]

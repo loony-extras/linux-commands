@@ -1,0 +1,29 @@
+[Unit]
+Description=Prometheus Node Exporter
+Documentation=https://github.com/prometheus/node_exporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=node_exporter
+Group=node_exporter
+
+ExecStart=/usr/local/bin/node_exporter \
+  --collector.systemd \
+  --collector.processes \
+  --collector.tcpstat \
+  --collector.textfile.directory=/var/lib/node_exporter/textfile_collector \
+  --web.listen-address=:9100 \
+  --web.telemetry-path=/metrics
+
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/node_exporter
+
+[Install]
+WantedBy=multi-user.target
