@@ -1,0 +1,48 @@
+# /etc/cloudflared/config.yml — locally-managed Cloudflare Tunnel
+# =============================================================================
+# 1. cloudflared tunnel create myapp            → prints <UUID>, writes <UUID>.json
+# 2. Replace <UUID> below, copy this file and the JSON to /etc/cloudflared/
+# 3. cloudflared tunnel route dns myapp app.example.com   (one per hostname)
+# 4. cloudflared tunnel ingress validate && sudo cloudflared service install
+#
+# Ingress rules are matched top to bottom; the last rule must be a catch-all.
+# =============================================================================
+
+tunnel: <UUID>
+credentials-file: /etc/cloudflared/<UUID>.json
+
+# Prometheus metrics for cloudflared itself (scrape from monitoring/prometheus)
+metrics: localhost:2000
+
+# Defaults for every rule (can be overridden per rule)
+originRequest:
+  connectTimeout: 10s
+  keepAliveTimeout: 90s
+
+ingress:
+  # API on a separate port, only under /api (must come before the hostname-only rule)
+  - hostname: app.example.com
+    path: ^/api/
+    service: http://localhost:8080
+
+  # Web app on the local nginx
+  - hostname: app.example.com
+    service: http://localhost:80
+
+  # Origin with a self-signed certificate
+  - hostname: admin.example.com
+    service: https://localhost:8443
+    originRequest:
+      noTLSVerify: true
+
+  # SSH: protect with a Cloudflare Access application, connect with
+  #   cloudflared access ssh --hostname ssh.example.com
+  - hostname: ssh.example.com
+    service: ssh://localhost:22
+
+  # Wildcard subdomains to one service
+  - hostname: "*.preview.example.com"
+    service: http://localhost:3000
+
+  # Catch-all (required)
+  - service: http_status:404

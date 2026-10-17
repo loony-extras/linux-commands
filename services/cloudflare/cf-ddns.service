@@ -1,0 +1,31 @@
+[Unit]
+Description=Cloudflare Dynamic DNS update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# CF_API_TOKEN, CF_ZONE, CF_RECORD, ... (chmod 600, owned by root)
+EnvironmentFile=/etc/cf-ddns.env
+ExecStart=/usr/local/bin/cf-ddns.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cf-ddns
+
+# Needs nothing but outbound HTTPS: run unprivileged and locked down
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+TimeoutStartSec=2min

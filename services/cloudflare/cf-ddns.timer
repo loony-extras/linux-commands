@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Cloudflare Dynamic DNS update every 5 minutes
+
+[Timer]
+# First run shortly after boot, then every 5 minutes
+OnBootSec=1min
+OnUnitActiveSec=5min
+# Spread requests when many hosts share a schedule
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
