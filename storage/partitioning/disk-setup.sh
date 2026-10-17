@@ -127,4 +127,4 @@ log "UUIDs (copy these for /etc/fstab):"
 blkid "$DISK"*
 
 echo ""
-log "Disk setup complete. Run scripts/setup/lvm-setup.sh --pv $LVM_PART next."
+log "Disk setup complete. Run storage/lvm/lvm-setup.sh --pv $LVM_PART next."
