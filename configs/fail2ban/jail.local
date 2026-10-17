@@ -1,0 +1,107 @@
+# /etc/fail2ban/jail.local — loony-linux production config
+# Never edit jail.conf — always override in jail.local
+
+[DEFAULT]
+# Ban for 10 minutes by default
+bantime  = 600
+# Failure window
+findtime = 600
+# Failures before ban
+maxretry = 5
+
+# Backend (systemd is more reliable than auto on Ubuntu 22.04+)
+backend = systemd
+
+# Ignore management IPs — customize for your environment
+ignoreip = 127.0.0.1/8 ::1
+
+# Action: ban + email with log context
+destemail = root
+sendername = Fail2Ban
+mta = sendmail
+action = %(action_mwl)s
+
+# =============================================================================
+# SSH
+# =============================================================================
+[sshd]
+enabled  = true
+port     = ssh
+logpath  = %(sshd_log)s
+backend  = %(sshd_backend)s
+maxretry = 3
+bantime  = 3600
+
+[sshd-ddos]
+enabled  = true
+port     = ssh
+logpath  = %(sshd_log)s
+maxretry = 15
+findtime = 5
+bantime  = 86400
+
+# =============================================================================
+# WEB
+# =============================================================================
+[nginx-http-auth]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/error.log
+maxretry = 5
+
+[nginx-limit-req]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/error.log
+maxretry = 10
+findtime = 60
+
+[nginx-botsearch]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/access.log
+maxretry = 2
+bantime  = 86400
+
+[nginx-noscript]
+enabled  = false
+port     = http,https
+logpath  = /var/log/nginx/access.log
+maxretry = 6
+
+# =============================================================================
+# MAIL (uncomment if running a mail server)
+# =============================================================================
+#[postfix]
+#enabled  = true
+#port     = smtp,465,submission
+#logpath  = %(postfix_log)s
+
+#[postfix-sasl]
+#enabled  = true
+#port     = smtp,465,submission,imap,imaps,pop3,pop3s
+#logpath  = %(postfix_log)s
+
+#[dovecot]
+#enabled  = true
+#port     = pop3,pop3s,imap,imaps,submission,465,sieve
+#logpath  = %(dovecot_log)s
+
+# =============================================================================
+# DATABASE (uncomment if DB port is exposed — avoid exposing to internet)
+# =============================================================================
+#[mysqld-auth]
+#enabled  = true
+#port     = 3306
+#logpath  = /var/log/mysql/error.log
+
+# =============================================================================
+# RECIDIVE — Ban persistent offenders for 7 days
+# =============================================================================
+[recidive]
+enabled  = true
+logpath  = /var/log/fail2ban.log
+banaction = iptables-allports
+bantime  = 604800    # 7 days
+findtime = 86400     # Within 1 day
+maxretry = 5         # If banned 5 times in a day

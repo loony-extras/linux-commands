@@ -1,0 +1,54 @@
+# /etc/ssh/sshd_config.d/99-hardening.conf
+# Production SSH hardening — loony-linux
+
+# Network
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+
+# Host keys (prefer Ed25519, then ECDSA, then RSA)
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+# Algorithms — remove weak ciphers
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp521
+HostKeyAlgorithms ssh-ed25519,ecdsa-sha2-nistp521,rsa-sha2-512
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+
+# Authentication
+LoginGraceTime 60
+PermitRootLogin no
+StrictModes yes
+MaxAuthTries 3
+MaxSessions 10
+MaxStartups 10:30:60
+
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+
+# Restrictions
+AllowTcpForwarding no
+X11Forwarding no
+PrintMotd no
+PrintLastLog yes
+TCPKeepAlive yes
+Compression delayed
+ClientAliveInterval 300
+ClientAliveCountMax 2
+UseDNS no
+AcceptEnv LANG LC_*
+PermitTunnel no
+AllowAgentForwarding no
+
+# Subsystems
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# Banner
+Banner /etc/ssh/banner.txt

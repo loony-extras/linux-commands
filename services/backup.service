@@ -1,0 +1,21 @@
+[Unit]
+Description=System Backup Job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/backup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=backup
+
+# Prevent backup from killing the system if it uses too much I/O
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+Nice=15
+IOWeight=10
+
+# Kill after 4 hours (backup hung)
+TimeoutStartSec=4h

@@ -1,0 +1,65 @@
+[Unit]
+Description=My Application Server
+Documentation=https://github.com/myorg/myapp
+# Start after network is fully up and database is ready
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=notify
+User=myapp
+Group=myapp
+WorkingDirectory=/opt/myapp
+
+# Main process
+ExecStart=/opt/myapp/bin/server \
+    --config /etc/myapp/config.yaml \
+    --listen 0.0.0.0:8080
+
+# Graceful reload (SIGHUP triggers config reload without restart)
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Pre-start: validate config
+ExecStartPre=/opt/myapp/bin/server --config /etc/myapp/config.yaml --validate
+
+# Environment
+Environment=GO_ENV=production
+EnvironmentFile=-/etc/myapp/env.conf
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=120s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=myapp
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+ReadWritePaths=/var/lib/myapp /var/log/myapp
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+MemoryMax=512M
+CPUQuota=100%
+
+# Capabilities (only if the app needs to bind ports < 1024)
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

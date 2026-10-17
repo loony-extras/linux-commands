@@ -1,0 +1,48 @@
+# /etc/fstab — Production Example (loony-linux)
+# IMPORTANT: Replace UUIDs with values from: blkid
+# Test changes with: mount -a (before rebooting)
+#
+# <device>                    <mountpoint>  <type>  <options>                           <dump> <pass>
+
+# Root filesystem (LVM)
+/dev/vg_system/lv_root        /             ext4    defaults,noatime,errors=remount-ro  0      1
+
+# Boot partition (use UUID — /dev/sdX changes on hardware changes)
+UUID=<boot-partition-uuid>    /boot         ext4    defaults,noatime                    0      2
+
+# EFI (UEFI systems only)
+UUID=<efi-partition-uuid>     /boot/efi     vfat    umask=0077                          0      2
+
+# Home
+/dev/vg_system/lv_home        /home         ext4    defaults,noatime,nodev              0      2
+
+# /var — separate to prevent log storms from filling root
+/dev/vg_system/lv_var         /var          ext4    defaults,noatime,nodev              0      2
+
+# /var/log — separate to prevent full logs from breaking services
+/dev/vg_system/lv_var_log     /var/log      ext4    defaults,noatime,nodev              0      2
+
+# /tmp — RAM-backed, cleared on reboot, no execution
+tmpfs                         /tmp          tmpfs   rw,nosuid,nodev,noexec,size=2G      0      0
+
+# /var/tmp — bound to /tmp (same restrictions)
+/tmp                          /var/tmp      none    bind                                 0      0
+
+# Swap
+/dev/vg_system/lv_swap        none          swap    sw                                   0      0
+
+# NFS mount (example — production NAS)
+# 192.168.1.100:/exports/shared  /mnt/shared  nfs  defaults,_netdev,nfsvers=4,ro       0      0
+
+# Extra data volume (XFS)
+# /dev/vg_data/lv_data          /data         xfs     defaults,noatime,nodev              0      2
+
+# Mount options reference:
+# noatime      = Don't update file access time (significant I/O reduction)
+# nodiratime   = Don't update directory access time
+# nodev        = Disallow device files on this filesystem
+# nosuid       = Ignore SUID/SGID bits
+# noexec       = Prevent execution of binaries
+# ro           = Read-only
+# errors=remount-ro = On error, remount root read-only (safer than panic)
+# _netdev      = Wait for network before mounting (for NFS, iSCSI)
