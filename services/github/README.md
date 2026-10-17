@@ -7,6 +7,7 @@ plus self-hosted runners and repository backups.
 
 ## Files
 
+- [cheatsheet.md](cheatsheet.md): complete GitHub cheat sheet: every `gh` command group, git workflows, Actions YAML, search qualifiers, API, Markdown, shortcuts
 - [examples.sh](examples.sh): annotated `gh` commands: auth, SSH keys, repos, PRs, issues, releases, Actions, secrets, API
 - [github-runner-setup.sh](github-runner-setup.sh): install a self-hosted Actions runner as a systemd service
 - [gh-backup-repos.sh](gh-backup-repos.sh): mirror every repo of a user or org to local bare repositories
