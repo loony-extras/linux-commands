@@ -2,16 +2,18 @@
 # =============================================================================
 # LOONY LINUX — Search & Navigation Tool
 # =============================================================================
-# Searches across all docs, scripts, configs, and reference files.
+# Searches across every <category>/<program>/ folder: READMEs, examples.sh,
+# scripts and configs.
 #
 # USAGE:
 #   ./search.sh                       Interactive menu
 #   ./search.sh nginx                 Search "nginx" everywhere
-#   ./search.sh -t grep               Find a specific tool/command
-#   ./search.sh -s 3                  Show Section 3 (Advanced Commands)
-#   ./search.sh -l                    List all available tools
+#   ./search.sh -t grep               Show examples for a program/command
+#   ./search.sh -s 3                  List tier 3 (Advanced) commands
+#   ./search.sh -d ssh                Open a program's README
+#   ./search.sh -l                    List all categories and programs
 #   ./search.sh -f firewall           Find files related to "firewall"
-#   ./search.sh -c awk                Show all awk examples
+#   ./search.sh -c awk                Examples + README + mentions for awk
 #
 # KEYBOARD SHORTCUT (add to ~/.bashrc):
 #   alias lls='bash /path/to/linux-commands/search.sh'
@@ -24,13 +26,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-COMMAND_LIB="$REPO_ROOT/scripts/commands/command-library.sh"
-DOCS_DIR="$REPO_ROOT/docs"
-CHEATSHEETS_DIR="$REPO_ROOT/cheatsheets"
-SCRIPTS_DIR="$REPO_ROOT/scripts"
-CONFIGS_DIR="$REPO_ROOT/configs"
-SECURITY_DIR="$REPO_ROOT/security"
-SERVICES_DIR="$REPO_ROOT/services"
+CATEGORIES=(commands system storage networking security monitoring debugging devops guides)
+
+TIER_NAMES=([1]="Basic" [2]="Intermediate" [3]="Advanced" [4]="Expert" [5]="Extreme")
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -64,15 +62,97 @@ heading() { echo -e "\n${YELLOW}${BOLD}$*${NC}"; }
 info()    { echo -e "${DIM}$*${NC}"; }
 err()     { echo -e "${RED}[!] $*${NC}" >&2; }
 
-# Check if fzf is available for interactive mode
-HAS_FZF=0
-command -v fzf &>/dev/null && HAS_FZF=1
+rel() { echo "${1#"$REPO_ROOT/"}"; }
 
-# ---------------------------------------------------------------------------
-# Detect terminal width for output formatting
-# ---------------------------------------------------------------------------
-COLS=$(tput cols 2>/dev/null || echo 80)
-(( COLS > 120 )) && COLS=120
+# All program folders, as paths relative to the repo root (e.g. networking/ssh)
+program_dirs() {
+  local c
+  for c in "${CATEGORIES[@]}"; do
+    [[ -d "$REPO_ROOT/$c" ]] || continue
+    find "$REPO_ROOT/$c" -mindepth 1 -maxdepth 1 -type d | sort | while read -r d; do rel "$d"; done
+  done
+}
+
+# One-line description of a program, taken from its category README table
+program_desc() {
+  local dir="$1" cat="${1%%/*}" name="${1#*/}"
+  grep -m1 "^| \[${name}\](${name}/)" "$REPO_ROOT/$cat/README.md" 2>/dev/null | \
+    awk -F'|' '{gsub(/^ +| +$/, "", $3); print $3}' || true
+}
+
+# Friendly names that don't match a folder name
+declare -A ALIASES=(
+  [k8s]="devops/kubernetes" [kube]="devops/kubernetes" [kubectl]="devops/kubernetes"
+  [compose]="devops/docker" [cicd]="devops/ci-cd" [github]="devops/ci-cd"
+  [install]="system/installation" [setup]="system/installation" [boot]="system/grub"
+  [dpkg]="system/apt" [package]="system/apt" [packages]="system/apt"
+  [process]="system/processes" [ps]="system/processes" [top]="system/processes"
+  [htop]="system/processes" [kill]="system/processes" [nice]="system/processes"
+  [user]="system/users" [useradd]="system/users" [chmod]="system/permissions"
+  [chown]="system/permissions" [acl]="system/permissions" [timer]="system/systemd"
+  [timers]="system/systemd" [journalctl]="system/journald" [crontab]="system/cron"
+  [proc]="system/kernel" [module]="system/kernel" [modprobe]="system/kernel" [dmesg]="system/kernel"
+  [fs]="storage/filesystems" [fstab]="storage/mount" [disk]="storage/partitioning"
+  [fdisk]="storage/partitioning" [parted]="storage/partitioning" [mdadm]="storage/raid"
+  [network]="networking/ip" [netplan]="networking/ip" [route]="networking/ip"
+  [ufw]="networking/firewall" [nftables]="networking/firewall" [iptables]="networking/firewall"
+  [scp]="networking/ssh" [sshd]="networking/ssh" [ss]="networking/diagnostics"
+  [netstat]="networking/diagnostics" [tcpdump]="networking/diagnostics" [ping]="networking/diagnostics"
+  [harden]="security/hardening" [selinux]="security/apparmor-selinux" [apparmor]="security/apparmor-selinux"
+  [logs]="monitoring/logs" [log]="monitoring/logs" [performance]="monitoring/performance"
+  [vmstat]="monitoring/performance" [iostat]="monitoring/performance" [free]="monitoring/performance"
+  [ltrace]="debugging/strace" [gdb]="debugging/binary-tools" [objdump]="debugging/binary-tools"
+  [flamegraph]="debugging/perf" [ebpf]="debugging/bpftrace"
+  [head]="commands/head-tail" [tail]="commands/head-tail" [gzip]="commands/compression"
+  [xz]="commands/compression" [zstd]="commands/compression" [bzip2]="commands/compression"
+  [unzip]="commands/zip" [tmux]="commands/job-control" [nohup]="commands/job-control"
+  [troubleshoot]="guides/troubleshooting" [debug]="guides/troubleshooting"
+  [best]="guides/best-practices" [practices]="guides/best-practices" [dr]="guides/best-practices"
+  [template]="guides/production-server" [project]="guides/production-server" [production]="guides/production-server"
+)
+
+# Resolve a name to a program folder (prints e.g. "networking/ssh"), or a
+# category folder (prints e.g. "networking") when the name is a category.
+resolve() {
+  local q="${1,,}" d
+  q="${q%/}"
+  [[ -d "$REPO_ROOT/$q" && -f "$REPO_ROOT/$q/README.md" ]] && { echo "$q"; return; }
+  # 1. Exact program folder name
+  d=$(program_dirs | awk -F/ -v q="$q" '$2 == q {print; exit}')
+  [[ -n "$d" ]] && { echo "$d"; return; }
+  # 2. Alias
+  [[ -n "${ALIASES[$q]:-}" ]] && { echo "${ALIASES[$q]}"; return; }
+  # 3. Category name
+  local c
+  for c in "${CATEGORIES[@]}"; do [[ "$c" == "$q" ]] && { echo "$c"; return; }; done
+  # 4. A "### <q> ..." block title inside some examples.sh
+  d=$(grep -lis "^### ${q}\b" "$REPO_ROOT"/*/*/examples.sh 2>/dev/null | head -1 || true)
+  [[ -n "$d" ]] && { rel "$(dirname "$d")"; return; }
+  # 5. Partial folder name
+  d=$(program_dirs | grep -i -m1 "/[^/]*${q}" || true)
+  [[ -n "$d" ]] && { echo "$d"; return; }
+  return 1
+}
+
+# Print a bash examples file with simple syntax highlighting
+highlight_sh() {
+  local pat_h3='^\#\#\#' pat_h2='^\#\#' pat_h1='^\#' pat_comment='\#'
+  grep -v "^$" | while IFS= read -r line; do
+    if [[ "$line" =~ $pat_h3 ]]; then
+      echo -e "\n${YELLOW}${BOLD}${line}${NC}"
+    elif [[ "$line" =~ $pat_h2 ]]; then
+      echo -e "${CYAN}${line}${NC}"
+    elif [[ "$line" =~ $pat_h1 ]]; then
+      echo -e "${DIM}${line}${NC}"
+    elif [[ "$line" =~ $pat_comment ]]; then
+      code="${line%%#*}"
+      comment="#${line#*#}"
+      echo -e "${GREEN}${code}${NC}${DIM}${comment}${NC}"
+    else
+      echo -e "${GREEN}${line}${NC}"
+    fi
+  done
+}
 
 # ---------------------------------------------------------------------------
 # Usage
@@ -84,25 +164,25 @@ usage() {
   echo "  $(basename "$0") [OPTIONS] [KEYWORD]"
   echo ""
   echo -e "${BOLD}OPTIONS:${NC}"
-  printf "  ${CYAN}%-20s${NC} %s\n" "<keyword>"   "Search all files for keyword"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-t <tool>"   "Find a specific command/tool (e.g. -t awk)"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-c <tool>"   "Show ALL examples for a tool"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-s <1-5>"    "Show a section (1=Basic…5=Extreme)"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-f <word>"   "Find files with 'word' in name or content"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-l"          "List all documented tools and sections"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-d <section>" "Open a doc (e.g. -d networking)"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-a"          "Show all section headings across every file"
-  printf "  ${CYAN}%-20s${NC} %s\n" "-h"          "Show this help"
+  printf "  ${CYAN}%-20s${NC} %s\n" "<keyword>"    "Search all files for keyword"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-t <tool>"    "Show examples for a program/command (e.g. -t awk)"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-c <tool>"    "Examples + README + mentions elsewhere"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-s <1-5>"     "List commands in a tier (1=Basic…5=Extreme)"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-d <name>"    "Open a program or category README (e.g. -d ssh)"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-f <word>"    "Find files with 'word' in name or content"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-l"           "List all categories and programs"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-a"           "Show all headings across every README"
+  printf "  ${CYAN}%-20s${NC} %s\n" "-h"           "Show this help"
   echo ""
   echo -e "${BOLD}EXAMPLES:${NC}"
   echo "  $(basename "$0") nginx              Search 'nginx' across all files"
-  echo "  $(basename "$0") -t grep            Show grep examples from command library"
-  echo "  $(basename "$0") -c awk             Full awk section with all examples"
-  echo "  $(basename "$0") -s 3               Show Section 3: Advanced Commands"
-  echo "  $(basename "$0") -s 5               Show Section 5: Extreme / Debugging"
+  echo "  $(basename "$0") -t grep            Show grep examples"
+  echo "  $(basename "$0") -t gdb             Show just the gdb block (debugging/binary-tools)"
+  echo "  $(basename "$0") -c awk             awk examples, README and mentions"
+  echo "  $(basename "$0") -s 5               Tier 5: debugging / performance / kernel"
+  echo "  $(basename "$0") -d networking      Open the networking category index"
+  echo "  $(basename "$0") -d k8s             Open devops/kubernetes/README.md"
   echo "  $(basename "$0") -f firewall        Find firewall-related files"
-  echo "  $(basename "$0") -d networking      Open networking doc"
-  echo "  $(basename "$0") -l                 List every documented tool"
   echo ""
   echo -e "${BOLD}INTERACTIVE:${NC}"
   echo "  $(basename "$0")                    Launch interactive menu"
@@ -111,397 +191,186 @@ usage() {
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: List all documented tools / sections
+# FEATURE: List all categories and programs
 # ---------------------------------------------------------------------------
 list_all() {
-  heading "DOCUMENTED TOOLS IN COMMAND LIBRARY"
-  hr
-  grep "^### " "$COMMAND_LIB" | sed 's/^### /  /' | \
-    awk '{printf "  %-45s\n", $0}' | \
-    sed 's/—.*//' | \
-    column
-  echo ""
-
-  heading "COMMAND LIBRARY SECTIONS"
-  hr
-  grep "^# SECTION" "$COMMAND_LIB" | sed 's/^# /  /'
-  echo ""
-
-  heading "DOCUMENTATION GUIDES"
-  hr
-  for f in "$DOCS_DIR"/*.md; do
-    local name
-    name=$(basename "$f" .md)
-    local title
-    title=$(head -2 "$f" | grep "^# " | sed 's/^# //')
-    printf "  ${CYAN}%-30s${NC} %s\n" "$name" "$title"
-  done
-  echo ""
-
-  heading "CHEATSHEETS"
-  hr
-  find "$CHEATSHEETS_DIR" -name "*.md" | sort | while read -r f; do
-    local rel
-    rel="${f#"$REPO_ROOT/"}"
-    local title
-    title=$(grep -m1 "^# " "$f" | sed 's/^# //' || true)
-    printf "  ${CYAN}%-45s${NC} %s\n" "$rel" "$title"
-  done
-  echo ""
-
-  heading "SCRIPTS"
-  hr
-  find "$SCRIPTS_DIR" -name "*.sh" | sort | while read -r f; do
-    local rel
-    rel="${f#"$REPO_ROOT/"}"
-    local desc
-    desc=$(grep -m1 "^# ===\|^# Description\|^# LOONY LINUX" "$f" 2>/dev/null | \
-           sed 's/^# //;s/=//g;s/LOONY LINUX — //' | head -c 50 || echo "")
-    printf "  ${GREEN}%-40s${NC} %s\n" "$rel" "$desc"
-  done
-  echo ""
-
-  heading "CONFIG FILES"
-  hr
-  find "$CONFIGS_DIR" "$SECURITY_DIR" "$SERVICES_DIR" -type f 2>/dev/null | sort | \
-    while read -r f; do
-      printf "  %s\n" "${f#"$REPO_ROOT/"}"
+  local c d
+  for c in "${CATEGORIES[@]}"; do
+    [[ -d "$REPO_ROOT/$c" ]] || continue
+    heading "$(echo "${c^^}")  ${DIM}$c/"
+    hr
+    find "$REPO_ROOT/$c" -mindepth 1 -maxdepth 1 -type d | sort | while read -r d; do
+      d=$(rel "$d")
+      local files
+      files=$(find "$REPO_ROOT/$d" -maxdepth 1 -type f ! -name README.md -printf '%f ' | tr ' ' '\n' | sort | tr '\n' ' ')
+      printf "  ${CYAN}%-28s${NC} %-50s ${DIM}%s${NC}\n" "$d" "$(program_desc "$d")" "$files"
     done
+  done
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Search a specific tool section in command-library.sh
+# FEATURE: Show examples for a program / command
 # ---------------------------------------------------------------------------
 find_tool() {
-  local tool="${1,,}"   # lowercase
-  heading "TOOL: $tool — Quick Reference"
-  hr
-
-  # Find the ### header for this tool (case-insensitive)
-  local start_line
-  start_line=$(grep -ni "^### .*${tool}" "$COMMAND_LIB" | head -1 | cut -d: -f1)
-
-  if [[ -z "$start_line" ]]; then
-    err "Tool '${tool}' not found in command library."
-    echo ""
-    echo "Available tools:"
-    grep "^### " "$COMMAND_LIB" | sed 's/^### /  /' | grep -i "${tool}" || \
-      grep "^### " "$COMMAND_LIB" | sed 's/^### /  /' | head -30
+  local tool="${1,,}" dir
+  if ! dir=$(resolve "$tool"); then
+    err "No program matching '${tool}'."
+    info "Run './search.sh -l' to list every program."
     return 1
   fi
 
-  # Find where the next ### section starts (so we print only this tool's block)
-  local end_line
-  end_line=$(awk "NR > $start_line && /^### /{print NR; exit}" "$COMMAND_LIB")
+  heading "TOOL: $tool  ${DIM}→ $dir/"
+  hr
 
-  if [[ -z "$end_line" ]]; then
-    end_line=$(wc -l < "$COMMAND_LIB")
-  else
-    end_line=$(( end_line - 1 ))
+  local ex="$REPO_ROOT/$dir/examples.sh"
+  if [[ ! -f "$ex" ]]; then
+    info "No examples.sh in $dir/ — showing README.md"
+    echo ""
+    cat "$REPO_ROOT/$dir/README.md"
+    return
   fi
 
-  # Print the block with syntax highlighting simulation
-  # (patterns stored in vars to avoid bash [[ regex parsing issues with \ ] ))
-  local pat_h3='^\#\#\#' pat_h2='^\#\#' pat_h1='^\#' pat_comment='\#'
-  sed -n "${start_line},${end_line}p" "$COMMAND_LIB" | \
-    grep -v "^$" | \
-    while IFS= read -r line; do
-      if [[ "$line" =~ $pat_h3 ]]; then
-        echo -e "${YELLOW}${BOLD}${line}${NC}"
-      elif [[ "$line" =~ $pat_h2 ]]; then
-        echo -e "${CYAN}${line}${NC}"
-      elif [[ "$line" =~ $pat_h1 ]]; then
-        echo -e "${DIM}${line}${NC}"
-      elif [[ "$line" =~ $pat_comment ]]; then
-        # Line with inline comment: split at first #
-        code="${line%%#*}"
-        comment="#${line#*#}"
-        echo -e "${GREEN}${code}${NC}${DIM}${comment}${NC}"
-      else
-        echo -e "${GREEN}${line}${NC}"
-      fi
-    done
-
-  echo ""
-  info "Lines $start_line–$end_line of $(basename "$COMMAND_LIB")"
+  # If one "### <tool>" block matches, print only that block; else the whole file
+  local start_line end_line
+  start_line=$(grep -ni "^### ${tool}\b" "$ex" | head -1 | cut -d: -f1 || true)
+  if [[ -n "$start_line" && "$(grep -c '^### ' "$ex")" -gt 1 ]]; then
+    end_line=$(awk -v s="$start_line" 'NR > s && /^### /{print NR - 2; exit}' "$ex")
+    [[ -z "$end_line" ]] && end_line=$(wc -l < "$ex")
+    sed -n "${start_line},${end_line}p" "$ex" | highlight_sh
+    echo ""
+    info "Lines $start_line–$end_line of $dir/examples.sh"
+  else
+    highlight_sh < "$ex"
+    echo ""
+    info "$dir/examples.sh"
+  fi
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Show all examples for a tool (alias for find_tool but verbose)
+# FEATURE: Examples + README + mentions in other READMEs
 # ---------------------------------------------------------------------------
 show_tool_examples() {
-  local tool="${1,,}"
-  heading "ALL EXAMPLES: $tool"
+  local tool="${1,,}" dir
+  heading "ALL ABOUT: $tool"
   hr
 
-  # Search in command library
-  echo -e "${BOLD}[ Command Library ]${NC}"
-  find_tool "$tool"
+  echo -e "${BOLD}[ Examples ]${NC}"
+  find_tool "$tool" || return 1
+  dir=$(resolve "$tool")
 
-  # Also search docs
-  local doc_hits
-  doc_hits=$(grep -rn --include="*.md" -i "${tool}" "$DOCS_DIR" "$CHEATSHEETS_DIR" 2>/dev/null | \
-    grep -i "^.*${tool}.*$" | head -20 || true)
+  echo ""
+  echo -e "${BOLD}[ $dir/README.md ]${NC}"
+  hr
+  cat "$REPO_ROOT/$dir/README.md"
 
-  if [[ -n "$doc_hits" ]]; then
+  local hits
+  hits=$(grep -rn --include="*.md" -iw "$tool" "${CATEGORIES[@]/#/$REPO_ROOT/}" 2>/dev/null | \
+    grep -v "^$REPO_ROOT/$dir/" | head -20 || true)
+  if [[ -n "$hits" ]]; then
     echo ""
-    echo -e "${BOLD}[ Documentation Mentions ]${NC}"
+    echo -e "${BOLD}[ Mentioned elsewhere ]${NC}"
     hr
-    echo "$doc_hits" | while IFS=: read -r file linenum content; do
-      local relfile="${file#"$REPO_ROOT/"}"
-      printf "${CYAN}%-40s${NC} ${DIM}:%s${NC}  %s\n" "$relfile" "$linenum" "$content"
+    echo "$hits" | while IFS=: read -r file linenum content; do
+      printf "${CYAN}%-45s${NC} ${DIM}:%s${NC}  %s\n" "$(rel "$file")" "$linenum" "$content"
     done
   fi
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Show a section by number (1–5)
+# FEATURE: List commands in a tier (1–5)
 # ---------------------------------------------------------------------------
 show_section() {
-  local section_num="$1"
-
-  local section_map=(
-    [1]="SECTION 1 — BASIC"
-    [2]="SECTION 2 — INTERMEDIATE"
-    [3]="SECTION 3 — ADVANCED"
-    [4]="SECTION 4 — EXPERT"
-    [5]="SECTION 5 — EXTREME"
-  )
-
-  local section_label="${section_map[$section_num]:-}"
-  if [[ -z "$section_label" ]]; then
-    err "Invalid section number: $section_num (valid: 1–5)"
-    echo "Sections:"
-    for k in "${!section_map[@]}"; do
-      echo "  $k: ${section_map[$k]}"
-    done | sort
+  local n="$1"
+  local name="${TIER_NAMES[$n]:-}"
+  if [[ -z "$name" ]]; then
+    err "Invalid tier: $n (valid: 1–5)"
+    for k in 1 2 3 4 5; do echo "  $k: ${TIER_NAMES[$k]}"; done
     return 1
   fi
 
-  heading "SECTION $section_num"
+  heading "TIER $n — ${name^^}"
   hr
 
-  # Find section boundaries
-  local start_line
-  start_line=$(grep -n "# SECTION ${section_num} " "$COMMAND_LIB" | cut -d: -f1 | head -1)
-
-  if [[ -z "$start_line" ]]; then
-    err "Could not locate section $section_num in command library"
-    return 1
-  fi
-
-  local next_section=$(( section_num + 1 ))
-  local end_line
-  end_line=$(awk "NR > $start_line && /^# SECTION ${next_section} /{print NR; exit}" "$COMMAND_LIB")
-
-  if [[ -z "$end_line" ]]; then
-    end_line=$(wc -l < "$COMMAND_LIB")
-  else
-    end_line=$(( end_line - 1 ))
-  fi
-
-  # List tools in this section first
-  echo -e "${BOLD}Tools in this section:${NC}"
-  sed -n "${start_line},${end_line}p" "$COMMAND_LIB" | \
-    grep "^### " | sed 's/^### /  /' | \
-    while read -r tool_line; do
-      echo -e "  ${CYAN}▸${NC} $tool_line"
-    done
+  local files
+  files=$(grep -l "^# Tier:.*\b${n} (" "$REPO_ROOT"/*/*/examples.sh 2>/dev/null || true)
+  echo -e "${BOLD}Programs with tier-$n commands:${NC}"
+  local f
+  for f in $files; do
+    local d; d=$(rel "$(dirname "$f")")
+    printf "  ${CYAN}▸${NC} %-28s ${DIM}%s${NC}\n" "$d" "$(grep '^### ' "$f" | sed 's/^### //;s/ —.*//' | paste -sd, -)"
+  done
 
   echo ""
-  read -r -p "$(echo -e "${YELLOW}Show full section? [y/N/tool name]: ${NC}")" choice
-
+  read -r -p "$(echo -e "${YELLOW}Show all examples? [y/N/tool name]: ${NC}")" choice
   case "${choice,,}" in
     y|yes)
-      local p3='^\#\#\#' p2='^\#\#' p_sec='^\# SECTION' p1='^\#' pc='\#'
-      sed -n "${start_line},${end_line}p" "$COMMAND_LIB" | \
-        while IFS= read -r line; do
-          if [[ "$line" =~ $p3 ]]; then
-            echo -e "\n${YELLOW}${BOLD}${line}${NC}"
-          elif [[ "$line" =~ $p_sec ]]; then
-            echo -e "${MAGENTA}${BOLD}${line}${NC}"
-          elif [[ "$line" =~ $p2 ]]; then
-            echo -e "${CYAN}${line}${NC}"
-          elif [[ "$line" =~ $p1 ]]; then
-            echo -e "${DIM}${line}${NC}"
-          elif [[ -n "$line" && "$line" =~ $pc ]]; then
-            code="${line%%#*}"
-            comment="#${line#*#}"
-            echo -e "${GREEN}${code}${NC}${DIM}${comment}${NC}"
-          elif [[ -n "$line" ]]; then
-            echo -e "${GREEN}${line}${NC}"
-          fi
-        done | less -R
+      for f in $files; do
+        echo -e "\n${MAGENTA}${BOLD}══ $(rel "$f") ══${NC}"
+        highlight_sh < "$f"
+      done | less -R
       ;;
     n|no|"")
       info "Use './search.sh -t <toolname>' to show a specific tool"
       ;;
     *)
-      # They typed a tool name
-      find_tool "$choice"
+      find_tool "$choice" | less -R
       ;;
   esac
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Open a documentation guide
+# FEATURE: Open a program or category README
 # ---------------------------------------------------------------------------
 open_doc() {
-  local query="${1,,}"
-
-  # Map friendly names to doc numbers
-  declare -A doc_map=(
-    ["01"]="01" ["installation"]="01" ["install"]="01" ["disk"]="01" ["grub"]="01" ["boot"]="01" ["lvm"]="01"
-    ["02"]="02" ["filesystem"]="02" ["fs"]="02" ["storage"]="02" ["fstab"]="02" ["raid"]="02" ["permissions"]="02"
-    ["03"]="03" ["commands"]="03" ["cmd"]="03" ["cli"]="03"
-    ["04"]="04" ["process"]="04" ["systemd"]="04" ["service"]="04" ["journald"]="04"
-    ["05"]="05" ["user"]="05" ["users"]="05" ["pam"]="05" ["sudo"]="05" ["apparmor"]="05"
-    ["06"]="06" ["network"]="06" ["networking"]="06" ["firewall"]="06" ["ssh"]="06" ["dns"]="06" ["ip"]="06"
-    ["07"]="07" ["security"]="07" ["harden"]="07" ["hardening"]="07" ["fail2ban"]="07" ["audit"]="07"
-    ["08"]="08" ["package"]="08" ["apt"]="08" ["dpkg"]="08" ["build"]="08"
-    ["09"]="09" ["devops"]="09" ["ansible"]="09" ["docker"]="09" ["kubernetes"]="09" ["k8s"]="09" ["cicd"]="09"
-    ["10"]="10" ["monitoring"]="10" ["monitor"]="10" ["prometheus"]="10" ["grafana"]="10" ["performance"]="10"
-    ["11"]="11" ["troubleshoot"]="11" ["debug"]="11" ["trouble"]="11"
-    ["12"]="12" ["kernel"]="12" ["sysctl"]="12" ["proc"]="12" ["module"]="12"
-    ["13"]="13" ["project"]="13" ["template"]="13" ["production"]="13"
-    ["15"]="15" ["best"]="15" ["practices"]="15" ["migration"]="15" ["backup"]="15" ["dr"]="15"
-  )
-
-  local section_num="${doc_map[$query]:-}"
-
-  if [[ -z "$section_num" ]]; then
-    # Try partial match on filenames
-    local match
-    match=$(ls "$DOCS_DIR"/*.md 2>/dev/null | grep -i "$query" | head -1)
-    if [[ -n "$match" ]]; then
-      less -R "$match"
-      return
-    fi
-    err "Doc '${query}' not found."
+  local dir
+  if ! dir=$(resolve "$1"); then
+    err "Nothing matching '$1'."
     echo ""
-    echo "Available docs:"
-    for f in "$DOCS_DIR"/*.md; do
-      local name; name=$(basename "$f" .md)
-      local title; title=$(head -2 "$f" | grep "^# " | sed 's/^# //')
-      printf "  ${CYAN}%-15s${NC} %s\n" "$name" "$title"
-    done
+    echo "Categories: ${CATEGORIES[*]}"
+    info "Run './search.sh -l' to list every program."
     return 1
   fi
-
-  local docfile
-  docfile=$(ls "$DOCS_DIR"/${section_num}-*.md 2>/dev/null | head -1)
-  if [[ -z "$docfile" ]]; then
-    err "Documentation file not found for section $section_num"
-    return 1
-  fi
-
-  echo -e "${DIM}Opening: ${docfile#"$REPO_ROOT/"}${NC}"
-  less -R "$docfile"
+  echo -e "${DIM}Opening: $dir/README.md${NC}"
+  less -R "$REPO_ROOT/$dir/README.md"
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Full-text search across all repo files
+# FEATURE: Full-text search, grouped by category
 # ---------------------------------------------------------------------------
 search_all() {
   local keyword="$1"
-  local results_found=0
+  local results_found=0 c
 
   heading "SEARCH: \"$keyword\""
   hr
 
-  # --- Command Library (highest priority) ---
-  local cmd_hits
-  cmd_hits=$(grep -n -i "$keyword" "$COMMAND_LIB" 2>/dev/null | grep -v "^[0-9]*:#" || true)
+  for c in "${CATEGORIES[@]}"; do
+    [[ -d "$REPO_ROOT/$c" ]] || continue
+    local hits
+    hits=$(grep -rn -i -- "$keyword" "$REPO_ROOT/$c" 2>/dev/null || true)
+    [[ -z "$hits" ]] && continue
 
-  if [[ -n "$cmd_hits" ]]; then
-    label "▶ Command Library — scripts/commands/command-library.sh"
-    echo "$cmd_hits" | head -30 | while IFS=: read -r linenum content; do
-      # Show context: what ### section is this line in?
-      local section_header
-      section_header=$(awk "NR<=$linenum && /^### /{last=\$0} END{print last}" "$COMMAND_LIB")
-      printf "  ${DIM}line %-5s${NC} ${GREEN}%s${NC}  ${DIM}[%s]${NC}\n" \
-        "$linenum" "$content" "$section_header"
+    label "▶ ${c^}"
+    echo "$hits" | head -20 | while IFS=: read -r file linenum content; do
+      printf "  ${CYAN}%-45s${NC}${DIM}:%-5s${NC} %s\n" "$(rel "$file")" "$linenum" "${content:0:120}"
     done
-    local total; total=$(echo "$cmd_hits" | wc -l)
-    [[ $total -gt 30 ]] && info "  ... and $(( total - 30 )) more matches"
+    local total; total=$(echo "$hits" | wc -l)
+    [[ $total -gt 20 ]] && info "  ... and $(( total - 20 )) more matches"
     echo ""
-    (( results_found++ ))
-  fi
-
-  # --- Documentation files ---
-  local doc_hits
-  doc_hits=$(grep -rn -i "$keyword" "$DOCS_DIR" 2>/dev/null || true)
-
-  if [[ -n "$doc_hits" ]]; then
-    label "▶ Documentation"
-    echo "$doc_hits" | head -25 | while IFS=: read -r file linenum content; do
-      local relfile="${file#"$REPO_ROOT/"}"
-      printf "  ${CYAN}%-40s${NC}${DIM}:%s${NC}  %s\n" "$relfile" "$linenum" "$content"
-    done
-    local total; total=$(echo "$doc_hits" | wc -l)
-    [[ $total -gt 25 ]] && info "  ... and $(( total - 25 )) more matches"
-    echo ""
-    (( results_found++ ))
-  fi
-
-  # --- Cheatsheets ---
-  local cheat_hits
-  cheat_hits=$(grep -rn -i "$keyword" "$CHEATSHEETS_DIR" 2>/dev/null || true)
-
-  if [[ -n "$cheat_hits" ]]; then
-    label "▶ Cheatsheets"
-    echo "$cheat_hits" | head -25 | while IFS=: read -r file linenum content; do
-      local relfile="${file#"$REPO_ROOT/"}"
-      printf "  ${CYAN}%-45s${NC}${DIM}:%s${NC}  %s\n" "$relfile" "$linenum" "$content"
-    done
-    local total; total=$(echo "$cheat_hits" | wc -l)
-    [[ $total -gt 25 ]] && info "  ... and $(( total - 25 )) more matches"
-    echo ""
-    (( results_found++ ))
-  fi
-
-  # --- Scripts ---
-  local script_hits
-  script_hits=$(grep -rn -i "$keyword" "$SCRIPTS_DIR" \
-    --exclude="command-library.sh" 2>/dev/null || true)
-
-  if [[ -n "$script_hits" ]]; then
-    label "▶ Scripts"
-    echo "$script_hits" | head -20 | while IFS=: read -r file linenum content; do
-      local relfile="${file#"$REPO_ROOT/"}"
-      printf "  ${CYAN}%-50s${NC}${DIM}:%s${NC}  %s\n" "$relfile" "$linenum" "$content"
-    done
-    echo ""
-    (( results_found++ ))
-  fi
-
-  # --- Configs, Security, Services ---
-  local cfg_hits
-  cfg_hits=$(grep -rn -i "$keyword" "$CONFIGS_DIR" "$SECURITY_DIR" "$SERVICES_DIR" \
-    "$REPO_ROOT/docker" "$REPO_ROOT/kubernetes" "$REPO_ROOT/monitoring" \
-    "$REPO_ROOT/ansible" 2>/dev/null || true)
-
-  if [[ -n "$cfg_hits" ]]; then
-    label "▶ Configs / Services / Infra"
-    echo "$cfg_hits" | head -20 | while IFS=: read -r file linenum content; do
-      local relfile="${file#"$REPO_ROOT/"}"
-      printf "  ${CYAN}%-55s${NC}${DIM}:%s${NC}  %s\n" "$relfile" "$linenum" "$content"
-    done
-    echo ""
-    (( results_found++ ))
-  fi
+    results_found=$(( results_found + 1 ))
+  done
 
   if (( results_found == 0 )); then
     err "No results found for: $keyword"
     echo ""
     echo "Try:"
-    echo "  ./search.sh -l            List all documented tools"
-    echo "  ./search.sh -a            Show all section headings"
+    echo "  ./search.sh -l            List all programs"
+    echo "  ./search.sh -a            Show all headings"
     return 1
   fi
 
   hr
-  info "Tip: Use './search.sh -t ${keyword}' to show all examples for a specific tool"
+  info "Tip: Use './search.sh -t ${keyword}' to show examples for a specific tool"
 }
 
 # ---------------------------------------------------------------------------
@@ -512,57 +381,35 @@ find_files() {
   heading "FILES RELATED TO: \"$keyword\""
   hr
 
-  echo -e "${BOLD}Matching filenames:${NC}"
-  find "$REPO_ROOT" -not -path '*/.git/*' -type f \
-    \( -iname "*${keyword}*" \) 2>/dev/null | \
+  echo -e "${BOLD}Matching file and folder names:${NC}"
+  find "${CATEGORIES[@]/#/$REPO_ROOT/}" -iname "*${keyword}*" 2>/dev/null | sort | \
     while read -r f; do
-      printf "  ${GREEN}%s${NC}\n" "${f#"$REPO_ROOT/"}"
+      printf "  ${GREEN}%s${NC}\n" "$(rel "$f")"
     done
 
   echo ""
   echo -e "${BOLD}Files containing \"$keyword\":${NC}"
-  grep -rl -i "$keyword" \
-    "$DOCS_DIR" "$CHEATSHEETS_DIR" "$SCRIPTS_DIR" "$CONFIGS_DIR" "$SECURITY_DIR" \
-    "$SERVICES_DIR" "$REPO_ROOT/docker" "$REPO_ROOT/kubernetes" \
-    "$REPO_ROOT/ansible" 2>/dev/null | \
-    sort | \
+  grep -rl -i -- "$keyword" "${CATEGORIES[@]/#/$REPO_ROOT/}" 2>/dev/null | sort | \
     while read -r f; do
-      local relfile="${f#"$REPO_ROOT/"}"
-      local count; count=$(grep -ic "$keyword" "$f" 2>/dev/null || echo 0)
-      printf "  ${CYAN}%-55s${NC} ${DIM}(%s matches)${NC}\n" "$relfile" "$count"
+      local count; count=$(grep -ic -- "$keyword" "$f" 2>/dev/null || echo 0)
+      printf "  ${CYAN}%-55s${NC} ${DIM}(%s matches)${NC}\n" "$(rel "$f")" "$count"
     done
 }
 
 # ---------------------------------------------------------------------------
-# FEATURE: Show all section headings across every file
+# FEATURE: Show all headings across every README
 # ---------------------------------------------------------------------------
 show_all_headings() {
   heading "ALL SECTIONS AND HEADINGS"
   hr
-
-  echo -e "${BOLD}Command Library Sections:${NC}"
-  grep -n "^# SECTION\|^### " "$COMMAND_LIB" | \
-    while IFS=: read -r linenum content; do
-      if [[ "$content" =~ ^#\ SECTION ]]; then
-        echo -e "\n  ${MAGENTA}${BOLD}${content}${NC}  ${DIM}(line $linenum)${NC}"
-      else
-        echo -e "    ${CYAN}${content}${NC}"
-      fi
+  local c d
+  for c in "${CATEGORIES[@]}"; do
+    [[ -d "$REPO_ROOT/$c" ]] || continue
+    echo -e "\n${MAGENTA}${BOLD}${c^^}${NC}"
+    program_dirs | grep "^$c/" | while read -r d; do
+      echo -e "\n  ${YELLOW}${BOLD}$d/${NC}"
+      grep "^## \|^### " "$REPO_ROOT/$d/README.md" 2>/dev/null | sed 's/^/    /' || true
     done
-
-  echo ""
-  echo -e "${BOLD}Documentation Sections:${NC}"
-  for f in "$DOCS_DIR"/*.md; do
-    local relfile; relfile=$(basename "$f")
-    echo -e "\n  ${YELLOW}${BOLD}${relfile}${NC}"
-    grep "^## \|^### " "$f" | sed 's/^/    /'
-  done
-
-  echo ""
-  echo -e "${BOLD}Cheatsheet Sections:${NC}"
-  find "$CHEATSHEETS_DIR" -name "*.md" | sort | while read -r f; do
-    echo -e "\n  ${YELLOW}${BOLD}${f#"$CHEATSHEETS_DIR/"}${NC}"
-    grep "^## \|^### " "$f" | sed 's/^/    /' || true
   done
 }
 
@@ -576,11 +423,11 @@ interactive_menu() {
     echo -e "${BOLD}What do you want to do?${NC}"
     echo ""
     printf "  ${CYAN}1${NC}  Search for a keyword or command\n"
-    printf "  ${CYAN}2${NC}  Browse by section (1=Basic … 5=Extreme)\n"
+    printf "  ${CYAN}2${NC}  Browse commands by tier (1=Basic … 5=Extreme)\n"
     printf "  ${CYAN}3${NC}  Look up a specific tool (grep, awk, curl, ...)\n"
-    printf "  ${CYAN}4${NC}  Open a documentation guide\n"
+    printf "  ${CYAN}4${NC}  Open a program or category README\n"
     printf "  ${CYAN}5${NC}  Find related files\n"
-    printf "  ${CYAN}6${NC}  List all documented tools\n"
+    printf "  ${CYAN}6${NC}  List all categories and programs\n"
     printf "  ${CYAN}7${NC}  Show all headings (map of the repo)\n"
     printf "  ${CYAN}q${NC}  Quit\n"
     echo ""
@@ -593,31 +440,24 @@ interactive_menu() {
         ;;
       2)
         echo ""
-        echo -e "${BOLD}Sections:${NC}"
-        grep "^# SECTION" "$COMMAND_LIB" | sed 's/^# /  /'
+        for k in 1 2 3 4 5; do echo "  $k: ${TIER_NAMES[$k]}"; done
         echo ""
-        read -r -p "$(echo -e "${YELLOW}Section number (1-5): ${NC}")" snum
+        read -r -p "$(echo -e "${YELLOW}Tier (1-5): ${NC}")" snum
         [[ -n "$snum" ]] && show_section "$snum"
         ;;
       3)
         echo ""
-        echo -e "${BOLD}Available tools:${NC}"
-        grep "^### " "$COMMAND_LIB" | sed 's/^### /  /' | \
-          awk '{printf "  %-45s\n", $0}' | sed 's/—.*//'
+        echo -e "${BOLD}Programs:${NC}"
+        program_dirs | sed 's|.*/||' | column
         echo ""
         read -r -p "$(echo -e "${YELLOW}Tool name: ${NC}")" tool
         [[ -n "$tool" ]] && find_tool "$tool" | less -R
         ;;
       4)
         echo ""
-        echo -e "${BOLD}Available docs:${NC}"
-        for f in "$DOCS_DIR"/*.md; do
-          local name; name=$(basename "$f" .md)
-          local title; title=$(head -2 "$f" | grep "^# " | sed 's/^# //')
-          printf "  ${CYAN}%-15s${NC} %s\n" "$name" "$title"
-        done
+        echo -e "${BOLD}Categories:${NC} ${CATEGORIES[*]}"
         echo ""
-        read -r -p "$(echo -e "${YELLOW}Doc name (e.g. networking, security, kernel): ${NC}")" doc
+        read -r -p "$(echo -e "${YELLOW}Program or category (e.g. ssh, lvm, security): ${NC}")" doc
         [[ -n "$doc" ]] && open_doc "$doc"
         ;;
       5)
@@ -677,12 +517,12 @@ main() {
       [[ -z "${2:-}" ]] && { err "Provide a tool name: -c awk"; exit 1; }
       show_tool_examples "$2" | less -R
       ;;
-    -s|--section)
-      [[ -z "${2:-}" ]] && { err "Provide section number: -s 3"; exit 1; }
+    -s|--section|--tier)
+      [[ -z "${2:-}" ]] && { err "Provide tier number: -s 3"; exit 1; }
       show_section "$2"
       ;;
     -d|--doc)
-      [[ -z "${2:-}" ]] && { err "Provide a doc name: -d networking"; exit 1; }
+      [[ -z "${2:-}" ]] && { err "Provide a name: -d ssh"; exit 1; }
       open_doc "$2"
       ;;
     -f|--files)
