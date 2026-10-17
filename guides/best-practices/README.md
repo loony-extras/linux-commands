@@ -1,6 +1,6 @@
-# Section 15 — Best Practices, Anti-Patterns, Scaling & Migration
+# Best Practices, Anti-Patterns, Scaling & Migration
 
-## 15.1 Best Practices Checklist
+## Best Practices Checklist
 
 ### System Administration
 ```
@@ -62,7 +62,7 @@
 
 ---
 
-## 15.2 Anti-Patterns to Avoid
+## Anti-Patterns to Avoid
 
 ### Extremely Common Mistakes
 
@@ -156,7 +156,7 @@ docker run --privileged --network host myapp   # No isolation at all
 
 ---
 
-## 15.3 Scaling Linux Systems
+## Scaling Linux Systems
 
 ### Vertical Scaling (bigger machine)
 
@@ -217,7 +217,7 @@ apt install pgbouncer
 
 ---
 
-## 15.4 Migration: Bare Metal → Cloud
+## Migration: Bare Metal → Cloud
 
 ### Phase 1: Assess
 
@@ -281,7 +281,7 @@ rsync -azP --delete /var/www/ user@cloud-server:/var/www/
 
 ---
 
-## 15.5 Disaster Recovery Planning
+## Disaster Recovery Planning
 
 ### RTO and RPO
 
@@ -356,7 +356,7 @@ dr_test() {
 
 ---
 
-## 15.6 Operational Readiness Checklist
+## Operational Readiness Checklist
 
 Before any system goes to production:
 
@@ -392,7 +392,7 @@ PROCESS
 
 ---
 
-## 15.7 Lynis Security Audit
+## Lynis Security Audit
 
 ```bash
 # Install Lynis (security auditing tool)

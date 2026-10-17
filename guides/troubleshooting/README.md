@@ -1,6 +1,6 @@
-# Section 11 — Troubleshooting Guide
+# Troubleshooting Guide
 
-## 11.1 Boot Issues — GRUB Recovery
+## Boot Issues — GRUB Recovery
 
 ### Scenario: System won't boot, drops to GRUB prompt
 
@@ -80,7 +80,7 @@ journalctl -b -1               # Previous boot logs
 
 ---
 
-## 11.2 Network Failures — Systematic Debugging
+## Network Failures — Systematic Debugging
 
 ### The OSI Model Debugging Ladder (bottom to top)
 
@@ -153,7 +153,7 @@ dmesg | grep -i "link\|error\|fail" | tail -10
 
 ---
 
-## 11.3 Disk Issues
+## Disk Issues
 
 ### Scenario: Filesystem corruption (ext4)
 
@@ -245,7 +245,7 @@ lvremove /dev/vg/snap            # Remove invalid snapshot
 
 ---
 
-## 11.4 Memory Leaks
+## Memory Leaks
 
 ```bash
 # Identify leaking process
@@ -291,7 +291,7 @@ node --inspect myapp.js
 
 ---
 
-## 11.5 Debugging System Crashes
+## Debugging System Crashes
 
 ### Kernel crashes — analyzing vmcore
 
@@ -359,7 +359,7 @@ dmesg | grep -i "lockup\|hung task"
 
 ---
 
-## 11.6 Step-by-Step Debugging Workflows
+## Step-by-Step Debugging Workflows
 
 ### Application not starting
 

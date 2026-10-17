@@ -1,8 +1,8 @@
-# Section 13 — Real-World Project Template
+# Real-World Project Template
 
 This section describes a complete production server setup using all the tools in this repo.
 
-## 13.1 Architecture Overview
+## Architecture Overview
 
 ```
 Internet
@@ -22,13 +22,13 @@ Internet
     └── [mon-01]  Prometheus + Grafana + alertmanager
 ```
 
-## 13.2 Provisioning Workflow
+## Provisioning Workflow
 
 ```bash
 # On a fresh Ubuntu 22.04 server:
 
 # Step 1: Initial setup (installs packages, creates admin user, SSH hardening, UFW)
-sudo bash scripts/setup/initial-setup.sh \
+sudo bash system/installation/initial-setup.sh \
   --hostname web-01 \
   --admin-user deploy \
   --timezone UTC
@@ -41,30 +41,30 @@ ssh deploy@<server-ip> "sudo sed -i 's/PasswordAuthentication yes/PasswordAuthen
   /etc/ssh/sshd_config.d/99-hardening.conf && sudo sshd -t && sudo systemctl reload sshd"
 
 # Step 4: Deeper security hardening
-ssh deploy@<server-ip> "sudo bash -s" < scripts/security/harden.sh
+ssh deploy@<server-ip> "sudo bash -s" < security/hardening/harden.sh
 
 # Step 5: Set up firewall for this server's role
-ssh deploy@<server-ip> "sudo bash -s" < scripts/networking/firewall-setup.sh \
+ssh deploy@<server-ip> "sudo bash -s" < networking/firewall/firewall-setup.sh \
   -- --profile web --ssh-port 22
 
 # Step 6: Ansible full provision
-ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml \
+ansible-playbook -i devops/ansible/inventory/hosts.yml devops/ansible/playbooks/site.yml \
   --limit web-01 \
   --diff \
   --check    # Dry run first
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml \
+ansible-playbook -i devops/ansible/inventory/hosts.yml devops/ansible/playbooks/site.yml \
   --limit web-01
 
 # Step 7: Deploy app stack
-scp docker/docker-compose.yml deploy@web-01:/opt/myapp/
+scp devops/docker/docker-compose.yml deploy@web-01:/opt/myapp/
 ssh deploy@web-01 "cd /opt/myapp && docker compose up -d"
 
 # Step 8: Verify
 curl -f https://app.company.com/health
 ```
 
-## 13.3 Security Baseline Verification
+## Security Baseline Verification
 
 Run this checklist on every server:
 
@@ -125,14 +125,14 @@ echo "Results: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]] && echo "BASELINE: PASS" || echo "BASELINE: FAIL — review failures above"
 ```
 
-## 13.4 Monitoring Integration
+## Monitoring Integration
 
 ```bash
 # Deploy Prometheus + Grafana via Docker Compose
 docker compose --profile monitoring up -d prometheus grafana
 
 # Install node_exporter on all servers
-bash monitoring/node-exporter.sh
+bash monitoring/node-exporter/node-exporter.sh
 
 # Access Grafana at http://mon-01:3000
 # Import dashboards:
