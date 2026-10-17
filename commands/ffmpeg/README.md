@@ -58,3 +58,10 @@ If you want, I can go next level with:
 
 - 🎬 **ready-made ffmpeg recipes (YouTube, reels, compression presets)**
 - ⚡ **real dev workflows (automation, batch scripts, pipelines)**
+
+---
+
+## Files
+
+- [dev_usecases.md](dev_usecases.md)
+- [social_media.md](social_media.md)

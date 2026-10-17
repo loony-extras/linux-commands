@@ -52,3 +52,9 @@ If you want, I can take it further with:
 
 - 🔥 **regex cheat sheet specifically for grep**
 - ⚡ **real-world debugging workflows (logs, servers, codebases)**
+
+---
+
+## Files
+
+- [examples.sh](examples.sh)

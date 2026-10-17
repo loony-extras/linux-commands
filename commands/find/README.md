@@ -61,3 +61,9 @@ If you want next level, I can show you:
 
 - 🔥 **dangerous but powerful `find` one-liners**
 - ⚡ **real dev use cases (logs, builds, cleanup, debugging)**
+
+---
+
+## Files
+
+- [examples.sh](examples.sh)
