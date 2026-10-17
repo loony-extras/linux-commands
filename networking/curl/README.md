@@ -342,3 +342,9 @@ I can give you:
 - 🐳 curl inside **Docker / CI pipelines**
 
 Just tell me what direction you want.
+
+---
+
+## Files
+
+- [examples.sh](examples.sh)
