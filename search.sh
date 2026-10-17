@@ -111,6 +111,10 @@ declare -A ALIASES=(
   [template]="guides/production-server" [project]="guides/production-server" [production]="guides/production-server"
   [cf]="services/cloudflare" [cloudflared]="services/cloudflare" [wrangler]="services/cloudflare"
   [tunnel]="services/cloudflare" [workers]="services/cloudflare" [ddns]="services/cloudflare"
+  [gh]="services/github" [git]="services/github" [actions]="services/github" [runner]="services/github"
+  [certbot]="services/letsencrypt" [acme]="services/letsencrypt" [acme.sh]="services/letsencrypt"
+  [ssl]="services/letsencrypt" [tls]="services/letsencrypt" [https]="services/letsencrypt"
+  [le]="services/letsencrypt" [openssl]="services/letsencrypt"
 )
 
 # Resolve a name to a program folder (prints e.g. "networking/ssh"), or a
