@@ -40,6 +40,7 @@ Full options: [SEARCH.md](SEARCH.md).
 | [monitoring](monitoring/) | performance, logs, prometheus, grafana, node-exporter |
 | [debugging](debugging/) | strace, lsof, binary-tools, perf, bpftrace |
 | [devops](devops/) | docker, ansible, kubernetes, ci-cd |
+| [services](services/) | cloudflare |
 | [guides](guides/) | troubleshooting, production-server, best-practices |
 
 Each category folder has a README listing its programs.

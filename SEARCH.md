@@ -26,6 +26,7 @@ scripts and configs. Run it from anywhere; it finds the repo root itself.
 ./search.sh -s 5                # strace, perf, bpftrace, kernel tools, one-liners
 ./search.sh -d ssh              # networking/ssh/README.md
 ./search.sh -d security         # security/README.md (category index)
+./search.sh -t wrangler         # every wrangler block in services/cloudflare/examples.sh
 ./search.sh -f firewall         # every file related to firewalls
 ```
 

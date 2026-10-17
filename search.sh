@@ -26,7 +26,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-CATEGORIES=(commands system storage networking security monitoring debugging devops guides)
+CATEGORIES=(commands system storage networking security monitoring debugging devops services guides)
 
 TIER_NAMES=([1]="Basic" [2]="Intermediate" [3]="Advanced" [4]="Expert" [5]="Extreme")
 
@@ -109,6 +109,8 @@ declare -A ALIASES=(
   [troubleshoot]="guides/troubleshooting" [debug]="guides/troubleshooting"
   [best]="guides/best-practices" [practices]="guides/best-practices" [dr]="guides/best-practices"
   [template]="guides/production-server" [project]="guides/production-server" [production]="guides/production-server"
+  [cf]="services/cloudflare" [cloudflared]="services/cloudflare" [wrangler]="services/cloudflare"
+  [tunnel]="services/cloudflare" [workers]="services/cloudflare" [ddns]="services/cloudflare"
 )
 
 # Resolve a name to a program folder (prints e.g. "networking/ssh"), or a
@@ -230,15 +232,17 @@ find_tool() {
     return
   fi
 
-  # If one "### <tool>" block matches, print only that block; else the whole file
-  local start_line end_line
-  start_line=$(grep -ni "^### ${tool}\b" "$ex" | head -1 | cut -d: -f1 || true)
-  if [[ -n "$start_line" && "$(grep -c '^### ' "$ex")" -gt 1 ]]; then
-    end_line=$(awk -v s="$start_line" 'NR > s && /^### /{print NR - 2; exit}' "$ex")
-    [[ -z "$end_line" ]] && end_line=$(wc -l < "$ex")
-    sed -n "${start_line},${end_line}p" "$ex" | highlight_sh
-    echo ""
-    info "Lines $start_line–$end_line of $dir/examples.sh"
+  # If some "### <tool>" blocks match, print only those blocks; else the whole file
+  local starts start_line end_line
+  starts=$(grep -ni "^### ${tool}\b" "$ex" | cut -d: -f1 || true)
+  if [[ -n "$starts" && "$(grep -c '^### ' "$ex")" -gt "$(wc -l <<<"$starts")" ]]; then
+    for start_line in $starts; do
+      end_line=$(awk -v s="$start_line" 'NR > s && /^### /{print NR - 2; exit}' "$ex")
+      [[ -z "$end_line" ]] && end_line=$(wc -l < "$ex")
+      sed -n "${start_line},${end_line}p" "$ex" | highlight_sh
+      echo ""
+      info "Lines $start_line–$end_line of $dir/examples.sh"
+    done
   else
     highlight_sh < "$ex"
     echo ""
@@ -297,7 +301,7 @@ show_section() {
   local f
   for f in $files; do
     local d; d=$(rel "$(dirname "$f")")
-    printf "  ${CYAN}▸${NC} %-28s ${DIM}%s${NC}\n" "$d" "$(grep '^### ' "$f" | sed 's/^### //;s/ —.*//' | paste -sd, -)"
+    printf "  ${CYAN}▸${NC} %-28s ${DIM}%s${NC}\n" "$d" "$(grep '^### ' "$f" | sed 's/^### //;s/ —.*//' | awk '!seen[$0]++' | paste -sd, -)"
   done
 
   echo ""
