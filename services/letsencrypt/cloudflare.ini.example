@@ -1,0 +1,7 @@
+# /etc/letsencrypt/cloudflare.ini — credentials for certbot's dns-cloudflare plugin
+#   sudo install -m 600 cloudflare.ini.example /etc/letsencrypt/cloudflare.ini
+#
+# Create a Cloudflare API token (dash → My Profile → API Tokens) with
+#   Zone → DNS → Edit   for the zone(s) you issue certificates for.
+# Never use the Global API Key here.
+dns_cloudflare_api_token = REPLACE_WITH_TOKEN
