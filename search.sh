@@ -14,7 +14,7 @@
 #   ./search.sh -c awk                Show all awk examples
 #
 # KEYBOARD SHORTCUT (add to ~/.bashrc):
-#   alias lls='bash ~/ai_projects/loony-linux/search.sh'
+#   alias lls='bash /path/to/linux-commands/search.sh'
 # =============================================================================
 
 set -euo pipefail
