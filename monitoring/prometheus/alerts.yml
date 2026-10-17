@@ -1,0 +1,263 @@
+# monitoring/prometheus/alerts.yml
+# Complete production alert ruleset — loony-linux
+
+groups:
+
+  # ===========================================================================
+  # Availability
+  # ===========================================================================
+  - name: availability
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target {{ $labels.instance }} is DOWN"
+          description: "Prometheus cannot scrape {{ $labels.job }}/{{ $labels.instance }} for > 1 minute."
+          runbook: "https://wiki.company.com/runbooks/target-down"
+
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP probe FAILED: {{ $labels.instance }}"
+          description: "Blackbox HTTP check failed for {{ $labels.instance }}"
+
+      - alert: SSLCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL cert expiring in < 14 days: {{ $labels.instance }}"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: SSLCertExpiryCritical
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 3
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL cert CRITICAL — expires in < 3 days: {{ $labels.instance }}"
+
+  # ===========================================================================
+  # CPU
+  # ===========================================================================
+  - name: cpu
+    rules:
+      - alert: HighCPU
+        expr: >
+          100 - (avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          ) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+
+      - alert: CriticalCPU
+        expr: >
+          100 - (avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          ) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL CPU on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+
+      - alert: HighIOwait
+        expr: >
+          avg by (instance) (
+            rate(node_cpu_seconds_total{mode="iowait"}[5m])
+          ) * 100 > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High I/O wait on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+          description: "I/O wait > 25% usually indicates disk saturation"
+
+      - alert: HighLoadAverage
+        expr: node_load1 / count by (instance) (node_cpu_seconds_total{mode="idle"}) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High load on {{ $labels.instance }}: {{ $value | printf \"%.2f\" }} per CPU"
+
+  # ===========================================================================
+  # Memory
+  # ===========================================================================
+  - name: memory
+    rules:
+      - alert: LowMemory
+        expr: >
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low memory on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}% available"
+
+      - alert: CriticalMemory
+        expr: >
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL memory on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}% available"
+
+      - alert: HighSwapUsage
+        expr: >
+          (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High swap usage on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+
+      - alert: OOMKillerActive
+        expr: increase(node_vmstat_oom_kill[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "OOM killer fired on {{ $labels.instance }}"
+
+  # ===========================================================================
+  # Disk
+  # ===========================================================================
+  - name: disk
+    rules:
+      - alert: DiskSpaceLow
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|rootfs"} /
+           node_filesystem_size_bytes{fstype!~"tmpfs|rootfs"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk low on {{ $labels.instance }}:{{ $labels.mountpoint }}: {{ $value | printf \"%.0f\" }}% free"
+
+      - alert: DiskSpaceCritical
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|rootfs"} /
+           node_filesystem_size_bytes{fstype!~"tmpfs|rootfs"}) * 100 < 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: Disk on {{ $labels.instance }}:{{ $labels.mountpoint }} at {{ $value | printf \"%.0f\" }}% free"
+
+      - alert: InodeLow
+        expr: >
+          (node_filesystem_files_free / node_filesystem_files) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low inodes on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+
+      - alert: DiskReadSaturation
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk {{ $labels.device }} near saturation on {{ $labels.instance }}"
+
+      - alert: DiskPredictFailure
+        expr: node_disk_info{health="failing"} == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk SMART failure predicted on {{ $labels.instance }}:{{ $labels.device }}"
+
+  # ===========================================================================
+  # Network
+  # ===========================================================================
+  - name: network
+    rules:
+      - alert: NetworkErrors
+        expr: rate(node_network_receive_errs_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network errors on {{ $labels.instance }}:{{ $labels.device }}"
+
+      - alert: NetworkDrops
+        expr: rate(node_network_receive_drop_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network drops on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}/s"
+
+  # ===========================================================================
+  # PostgreSQL
+  # ===========================================================================
+  - name: postgresql
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL down on {{ $labels.instance }}"
+
+      - alert: PostgreSQLHighConnections
+        expr: >
+          pg_stat_activity_count / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections high on {{ $labels.instance }}: {{ $value | printf \"%.0f\" }}%"
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL replication lag {{ $value }}s on {{ $labels.instance }}"
+
+      - alert: PostgreSQLDeadlocks
+        expr: rate(pg_stat_database_deadlocks[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL deadlocks on {{ $labels.instance }}"
+
+  # ===========================================================================
+  # Application
+  # ===========================================================================
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        expr: >
+          rate(http_requests_total{status=~"5.."}[5m]) /
+          rate(http_requests_total[5m]) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.instance }}: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: SlowResponseTime
+        expr: >
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow p95 response time on {{ $labels.instance }}: {{ $value | printf \"%.2f\" }}s"
